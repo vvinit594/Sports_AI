@@ -353,6 +353,10 @@ def test_chase_reaches_target_before_last_recorded_delivery():
     assert final.knowledge_horizon == KnowledgeHorizon.AFTER_INNINGS
     assert final.innings_runs == 7
     assert final.innings_runs_at_delivery == 7
+    assert winning.terminal_innings_runs == 4
+    assert final.terminal_innings_runs == 4
+    assert final.terminal_sequence == winning.sequence
+    assert final.innings_completion_reason == InningsCompletionReason.TARGET_REACHED
 
 
 def test_all_out_before_scheduled_overs():

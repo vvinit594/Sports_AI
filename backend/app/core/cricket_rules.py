@@ -123,8 +123,15 @@ def target_reached(innings_runs: int, target: int | None) -> bool:
 
 
 def innings_is_all_out(innings_wickets: int, absent_hurt_count: int = 0) -> bool:
+    """Return whether the batting side can no longer continue.
+
+    All-out is ``wickets_lost >= available_wickets``. If ten or more players
+    are absent hurt, available wickets are 0: no batting pair can be formed,
+    so the innings is all-out immediately.
+    """
+
     available = max_wickets_available(absent_hurt_count)
-    return available > 0 and innings_wickets >= available
+    return innings_wickets >= available
 
 
 def scheduled_balls_exhausted(legal_balls: int, scheduled_balls: int | None) -> bool:

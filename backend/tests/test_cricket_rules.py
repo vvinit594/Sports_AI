@@ -113,3 +113,14 @@ def test_absent_hurt_reduces_available_wickets():
     assert max_wickets_available(0) == 10
     assert max_wickets_available(1) == 9
     assert max_wickets_available(10) == 0
+
+
+def test_all_out_when_no_batting_pair_remains():
+    from app.core.cricket_rules import innings_is_all_out
+
+    assert innings_is_all_out(10, 0) is True
+    assert innings_is_all_out(9, 0) is False
+    assert innings_is_all_out(9, 1) is True
+    assert innings_is_all_out(0, 10) is True
+    assert innings_is_all_out(0, 11) is True
+    assert innings_is_all_out(0, 9) is False

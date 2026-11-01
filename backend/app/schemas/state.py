@@ -76,5 +76,10 @@ class MatchState(BaseModel):
     includes_pre_innings_penalty: bool = False
     includes_post_innings_penalty: bool = False
     innings_runs_at_delivery: int = 0
+    terminal_sequence: int | None = None
+    terminal_innings_runs: int | None = None
+    terminal_innings_wickets: int | None = None
+    terminal_legal_balls: int | None = None
+    terminal_overs: str | None = None
     outcome: OutcomeInfo
     warnings: tuple[str, ...] = Field(default_factory=tuple)

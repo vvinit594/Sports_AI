@@ -87,7 +87,12 @@ are the situation immediately after that many deliveries.
 | `knowledge_horizon` | `pre_innings`, `at_delivery`, or `after_innings` |
 | `includes_pre_innings_penalty` | Pre-innings penalty is already in the score |
 | `includes_post_innings_penalty` | Post-innings penalty is already in `innings_runs` |
-| `innings_runs_at_delivery` | Score available at the delivery, excluding post-innings penalty |
+| `innings_runs_at_delivery` | Historical score at this source delivery, excluding post-innings penalty |
+| `terminal_sequence` | Sequence of the first cricket-terminal state, if any |
+| `terminal_innings_runs` | Frozen cricket score at terminal time; later source balls and post-penalties do not change it |
+| `terminal_innings_wickets` | Frozen counting wickets at terminal time |
+| `terminal_legal_balls` | Frozen legal-ball count at terminal time |
+| `terminal_overs` | Frozen overs notation at terminal time |
 | `outcome` | Copied from source; never inferred by the engine |
 
 ## Assumptions
@@ -95,8 +100,10 @@ are the situation immediately after that many deliveries.
 1. Wides and no-balls are the only illegal extras.
 2. `retired hurt` / `retired not out` do not count toward all-out.
 3. `retired out` does count toward all-out.
-4. Standard all-out is 10 wickets, reduced by `absent_hurt`. Squad size is not
-   used because player lists can include substitutes.
+4. Standard all-out is 10 wickets, reduced by `absent_hurt`. If ten or more
+   players are absent hurt, available wickets are 0 and the innings is all-out
+   immediately because no batting pair can be formed. Squad size is not used
+   because player lists can include substitutes.
 5. Target overs use cricket notation, not decimals: `35.1` means 35 overs + 1
    ball, and `19.5` is valid. The ball component must be less than
    `balls_per_over`, so `5.6` is rejected for a six-ball over.

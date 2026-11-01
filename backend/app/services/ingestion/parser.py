@@ -303,12 +303,9 @@ def _parse_delivery(
     total_runs = runs.get("total")
     if batter_runs is None or extras_runs is None or total_runs is None:
         raise ParseError(f"delivery {sequence} is missing runs.batter/extras/total")
-    try:
-        batter_runs = int(batter_runs)
-        extras_runs = int(extras_runs)
-        total_runs = int(total_runs)
-    except (TypeError, ValueError) as exc:
-        raise ParseError(f"delivery {sequence} has non-integer run values") from exc
+    batter_runs = _parse_exact_int(batter_runs, f"delivery {sequence} runs.batter")
+    extras_runs = _parse_exact_int(extras_runs, f"delivery {sequence} runs.extras")
+    total_runs = _parse_exact_int(total_runs, f"delivery {sequence} runs.total")
     if batter_runs < 0 or extras_runs < 0 or total_runs < 0:
         raise ParseError(f"delivery {sequence} has negative run values")
     if batter_runs + extras_runs != total_runs:
@@ -332,7 +329,11 @@ def _parse_delivery(
         innings_delivery_number=innings_delivery_number,
         over_number=over_number,
         delivery_in_over=delivery_in_over,
-        actual_delivery=_optional_str(delivery_raw.get("actual_delivery")),
+        actual_delivery=_parse_actual_delivery(
+            delivery_raw.get("actual_delivery"),
+            over_number=over_number,
+            sequence=sequence,
+        ),
         batter=_require_str(delivery_raw, "batter"),
         bowler=_require_str(delivery_raw, "bowler"),
         non_striker=_require_str(delivery_raw, "non_striker"),
@@ -358,10 +359,7 @@ def _parse_extras(extras_raw: dict[str, Any], sequence: int, extras_runs: int) -
     for key, value in extras_raw.items():
         if value is None:
             continue
-        try:
-            amount = int(value)
-        except (TypeError, ValueError) as exc:
-            raise ParseError(f"delivery {sequence} extra '{key}' is not an integer") from exc
+        amount = _parse_exact_int(value, f"delivery {sequence} extra '{key}'")
         if amount < 0:
             raise ParseError(f"delivery {sequence} extra '{key}' cannot be negative")
         if key in KNOWN_EXTRA_TYPES:
@@ -466,8 +464,8 @@ def _parse_miscounted(raw: Any, innings_number: int) -> tuple[MiscountedOverInfo
             continue
         items.append(
             MiscountedOverInfo(
-                over_number=int(over_number),
-                balls=int(details.get("balls")),
+                over_number=_parse_exact_int(over_number, f"innings[{innings_number}] miscounted over"),
+                balls=_parse_exact_int(details.get("balls"), f"innings[{innings_number}] miscounted balls"),
                 umpire=_optional_str(details.get("umpire")),
             )
         )
@@ -508,11 +506,47 @@ def _require_str(container: dict[str, Any], key: str) -> str:
     return str(value)
 
 
+def _parse_exact_int(value: Any, label: str) -> int:
+    if isinstance(value, bool):
+        raise ParseError(f"{label} must be an integer, got {value!r}")
+    if isinstance(value, int):
+        return value
+    if isinstance(value, float):
+        if not value.is_integer():
+            raise ParseError(f"{label} must be an integer, got {value!r}")
+        return int(value)
+    if isinstance(value, str):
+        text = value.strip()
+        if text.startswith("-") and len(text) > 1 and text[1:].isdigit():
+            return int(text)
+        if text.isdigit():
+            return int(text)
+        raise ParseError(f"{label} must be an integer, got {value!r}")
+    raise ParseError(f"{label} must be an integer, got {value!r}")
+
+
+def _parse_actual_delivery(value: Any, *, over_number: int, sequence: int) -> str | None:
+    label = _optional_str(value)
+    if label is None:
+        return None
+    if "." not in label:
+        return label
+    over_text, ball_text = label.split(".", 1)
+    if not over_text.isdigit() or not ball_text.isdigit():
+        return label
+    labeled_over = int(over_text)
+    if labeled_over != over_number:
+        raise ParseError(
+            f"delivery {sequence} actual_delivery {label!r} does not match over {over_number}"
+        )
+    return label
+
+
 def _require_int(container: dict[str, Any], key: str) -> int:
     value = container.get(key)
     if value is None:
         raise ParseError(f"missing required integer field '{key}'")
-    return int(value)
+    return _parse_exact_int(value, key)
 
 
 def _require_string_list(container: dict[str, Any], key: str) -> tuple[str, ...]:
@@ -536,10 +570,10 @@ def _optional_str(value: Any) -> str | None:
     return str(value)
 
 
-def _optional_int(value: Any) -> int | None:
+def _optional_int(value: Any, label: str = "value") -> int | None:
     if value is None or value == "":
         return None
-    return int(value)
+    return _parse_exact_int(value, label)
 
 
 def _optional_bool(value: Any) -> bool | None:
