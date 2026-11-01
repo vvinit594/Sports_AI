@@ -1,9 +1,10 @@
-# PulseIQ Architecture — Phase 1
+# PulseIQ Architecture — Phase 1 and Phase 2
 
 ## Scope
 
-Phase 1 is a modular Python package. It has no HTTP server, database, cache,
-frontend, or trained model.
+Phase 1 reconstructs cricket match state. Phase 2 adds chase-win features,
+baseline models, inference, and deterministic moment detection. There is still
+no HTTP server, database, cache, frontend, or generative AI.
 
 ```
 Cricsheet JSON
@@ -16,7 +17,14 @@ NormalizedMatch
       │
       ├── match_engine.MatchStateEngine ──► MatchState[]
       ├── match_engine.validate_match ───► ValidationReport
-      └── replay.ReplayEngine ───────────► seek / next / restart
+      ├── replay.ReplayEngine ───────────► seek / next / restart
+      │
+      ▼
+ml.features / ml.dataset_builder
+      │
+      ├── ml.train / ml.evaluate / ml.model_registry
+      ├── ml.inference
+      └── intelligence.moment_detector
 ```
 
 ## Package layout
@@ -28,12 +36,16 @@ NormalizedMatch
 | `backend/app/services/ingestion` | Cricsheet parser |
 | `backend/app/services/match_engine` | State reconstruction and validation |
 | `backend/app/services/replay` | Deterministic historical replay |
-| `backend/scripts` | Local ingest and replay CLIs |
-| `backend/tests` | Unit, validation, and real-match tests |
+| `backend/app/services/ml` | Features, dataset, train, evaluate, inference |
+| `backend/app/services/intelligence` | Win-probability series and moment detection |
+| `backend/models` | Local Joblib artifacts (gitignored binaries) |
+| `backend/scripts` | Ingest, replay, audit, train, and evaluate CLIs |
+| `backend/tests` | Unit, validation, real-match, and Phase 2 tests |
 | `data/raw/cricsheet/samples` | Small official Cricsheet T20 sample |
 
-Later phases can add `api`, SQLAlchemy models, ML inference, and the Next.js
-app without changing the match-engine contracts.
+Later phases can add `api`, SQLAlchemy models, GenAI, and the Next.js app
+without changing the match-engine contracts. Phase 2 does not train a
+production model on the 15-file sample. See `docs/MODEL_CARD.md`.
 
 ## Design decisions
 

@@ -3,8 +3,10 @@
 The Adaptive Intelligence Layer for Live Sports.
 
 Phase 1 implements the cricket data foundation and historical match replay
-engine only. Machine learning, generative AI, APIs, and the web application
-are not part of this phase.
+engine. Phase 2 adds chase-win features, baseline models, inference, and
+moment detection. Generative AI, APIs, and the web application are not part
+of these phases. The 15 official sample matches are not enough for a
+production-quality model.
 
 ## What Phase 1 does
 
@@ -51,6 +53,16 @@ python backend\scripts\ingest_cricsheet.py --input data\raw\cricsheet\samples --
 python backend\scripts\replay_match.py data\raw\cricsheet\samples\1082591.json
 ```
 
+## Phase 2 pipeline
+
+```powershell
+python backend\scripts\audit_dataset.py
+python backend\scripts\build_training_dataset.py
+python backend\scripts\train_win_probability.py
+```
+
+See `docs/DATASET.md`, `docs/FEATURES.md`, and `docs/MODEL_CARD.md`.
+
 ## Sample data
 
 `data/raw/cricsheet/samples` contains a small official Cricsheet T20 set used
@@ -68,6 +80,9 @@ backend/app/schemas              Normalized models
 backend/app/services/ingestion   Cricsheet parser
 backend/app/services/match_engine
 backend/app/services/replay
+backend/app/services/ml
+backend/app/services/intelligence
+backend/models
 backend/tests
 data/raw/cricsheet/samples
 docs/
@@ -75,5 +90,5 @@ docs/
 
 ## Next phase
 
-Phase 2 will train a win-probability model and detect significant moments.
-It has not been started.
+Phase 3 (APIs, GenAI explanations, personalization, agents, frontend) has
+not been started.

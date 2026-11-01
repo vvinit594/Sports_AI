@@ -74,6 +74,7 @@ def cricsheet_match(
     balls_per_over: int = 6,
     match_type: str = "T20",
     season: str | int = "2024",
+    dates: list[str] | None = None,
 ) -> dict[str, Any]:
     return {
         "meta": {"data_version": "1.2.0", "created": "2024-01-01", "revision": 1},
@@ -84,7 +85,7 @@ def cricsheet_match(
             "gender": "male",
             "overs": overs,
             "season": season,
-            "dates": ["2024-01-01"],
+            "dates": dates or ["2024-01-01"],
             "teams": list(teams),
             "venue": "Test Ground",
             "city": "Test City",

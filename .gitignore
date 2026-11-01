@@ -30,6 +30,11 @@ data/raw/cricsheet/*.zip
 data/processed/**
 !data/processed/.gitkeep
 
+# Phase 2 local model artifacts (regenerate with train script)
+backend/models/artifacts/**
+!backend/models/artifacts/.gitkeep
+*.joblib
+
 # Editor / OS
 .idea/
 .vscode/

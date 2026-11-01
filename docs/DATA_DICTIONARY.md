@@ -126,3 +126,9 @@ Outcomes: winner by runs/wickets, `tie` with `eliminator`, `no result`, `D/L`.
 
 Other: reviews, replacements, miscounted overs, absent hurt, non-boundary
 fours/sixes, multi-super-over matches (up to 6 innings in the sample).
+
+## Phase 2 derived features
+
+Chase-win training rows are built from active Phase 1 states. Feature names,
+missing-value flags, and leakage rules are in `docs/FEATURES.md`. The label
+and match-level split are in `docs/DATASET.md`.
