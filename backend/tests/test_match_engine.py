@@ -1,6 +1,11 @@
 import pytest
 
-from app.schemas.enums import TargetSource
+from app.schemas.enums import (
+    InningsCompletionReason,
+    KnowledgeHorizon,
+    MatchCompletionReason,
+    TargetSource,
+)
 from app.services.ingestion import parse_cricsheet_dict
 from app.services.match_engine import MatchStateEngine
 from tests.helpers import cricsheet_match, delivery, innings, over
@@ -271,4 +276,189 @@ def test_one_innings_no_result_has_no_target():
     assert final.target is None
     assert final.runs_remaining is None
     assert final.match_complete is True
+    assert final.match_completion_reason == MatchCompletionReason.SOURCE_ENDED
+    assert final.innings_completion_reason == InningsCompletionReason.SOURCE_ENDED
+    assert final.is_active_prediction_state is False
     assert len([state for state in states if state.innings_number == 2]) == 0
+
+
+def test_first_innings_end_does_not_complete_the_match():
+    raw = cricsheet_match(
+        [
+            innings("Alpha", [over(0, [delivery(actual_delivery="0.1", batter_runs=1)])]),
+            innings(
+                "Beta",
+                [
+                    over(
+                        0,
+                        [
+                            delivery(actual_delivery="0.1", batter_runs=1),
+                            delivery(actual_delivery="0.2", batter_runs=1),
+                        ],
+                    )
+                ],
+                target={"overs": 20, "runs": 10},
+            ),
+        ]
+    )
+    _, states = _states(raw, "not-match-end")
+    first_end = [state for state in states if state.innings_number == 1 and state.innings_just_completed][-1]
+    chase_live = next(
+        state
+        for state in states
+        if state.innings_number == 2 and state.last_delivery and not state.innings_complete
+    )
+    assert first_end.innings_complete is True
+    assert first_end.match_complete is False
+    assert first_end.is_active_prediction_state is False
+    assert chase_live.match_complete is False
+    assert chase_live.is_active_prediction_state is True
+    assert chase_live.knowledge_horizon == KnowledgeHorizon.AT_DELIVERY
+
+
+def test_chase_reaches_target_before_last_recorded_delivery():
+    raw = cricsheet_match(
+        [
+            innings("Alpha", [over(0, [delivery(actual_delivery="0.1", batter_runs=6)])]),
+            innings(
+                "Beta",
+                [
+                    over(
+                        0,
+                        [
+                            delivery(actual_delivery="0.1", batter_runs=4),
+                            delivery(actual_delivery="0.2", batter_runs=1),
+                            delivery(actual_delivery="0.3", batter_runs=2),
+                        ],
+                    )
+                ],
+                target={"overs": 20, "runs": 4},
+            ),
+        ]
+    )
+    _, states = _states(raw, "early-chase")
+    chase = [state for state in states if state.innings_number == 2 and state.last_delivery]
+    winning = next(state for state in chase if state.sequence == chase[0].sequence)
+    extra = [state for state in chase if state.source_delivery_after_terminal]
+    final = chase[-1]
+    assert winning.innings_completion_reason == InningsCompletionReason.TARGET_REACHED
+    assert winning.match_complete is True
+    assert winning.match_completion_reason == MatchCompletionReason.TARGET_REACHED
+    assert winning.is_active_prediction_state is False
+    assert winning.knowledge_horizon == KnowledgeHorizon.AT_DELIVERY
+    assert winning.includes_post_innings_penalty is False
+    assert extra
+    assert all(state.match_complete for state in extra)
+    assert all(not state.is_active_prediction_state for state in extra)
+    assert final.knowledge_horizon == KnowledgeHorizon.AFTER_INNINGS
+    assert final.innings_runs == 7
+    assert final.innings_runs_at_delivery == 7
+
+
+def test_all_out_before_scheduled_overs():
+    wickets = [
+        delivery(
+            actual_delivery=f"0.{index}",
+            wickets=[{"kind": "bowled", "player_out": f"Batter {index}"}],
+        )
+        for index in range(1, 11)
+    ]
+    raw = cricsheet_match([innings("Alpha", [over(0, wickets)])])
+    _, states = _states(raw, "all-out")
+    final = states[-1]
+    assert final.innings_wickets == 10
+    assert final.legal_balls == 10
+    assert final.innings_completion_reason == InningsCompletionReason.ALL_OUT
+    assert final.match_complete is True
+    assert final.match_completion_reason == MatchCompletionReason.LAST_INNINGS_COMPLETE
+    assert final.is_active_prediction_state is False
+
+
+def test_scheduled_overs_exhausted():
+    dots = [delivery(actual_delivery=f"0.{index}") for index in range(1, 7)]
+    raw = cricsheet_match(
+        [innings("Alpha", [over(0, dots)])],
+        overs=1,
+    )
+    _, states = _states(raw, "overs-done")
+    final = states[-1]
+    assert final.legal_balls == 6
+    assert final.balls_remaining == 0
+    assert final.innings_completion_reason == InningsCompletionReason.OVERS_EXHAUSTED
+    assert final.match_complete is True
+    assert final.is_active_prediction_state is False
+
+
+def test_super_over_completion_does_not_end_match_until_last_super_over():
+    raw = cricsheet_match(
+        [
+            innings("Alpha", [over(0, [delivery(actual_delivery="0.1", batter_runs=4)])]),
+            innings(
+                "Beta",
+                [over(0, [delivery(actual_delivery="0.1", batter_runs=4)])],
+                target={"overs": 20, "runs": 5},
+            ),
+            innings(
+                "Beta",
+                [over(0, [delivery(actual_delivery="0.1", batter_runs=6)])],
+                super_over=True,
+            ),
+            innings(
+                "Alpha",
+                [over(0, [delivery(actual_delivery="0.1", batter_runs=1)])],
+                super_over=True,
+            ),
+        ],
+        outcome={"result": "tie", "eliminator": "Beta"},
+    )
+    _, states = _states(raw, "so-complete")
+    so_one = [state for state in states if state.innings_number == 3 and state.innings_just_completed][-1]
+    so_two = [state for state in states if state.innings_number == 4 and state.innings_just_completed][-1]
+    assert so_one.match_complete is False
+    assert so_one.innings_complete is True
+    assert so_two.match_complete is True
+    assert so_two.is_active_prediction_state is False
+    assert so_two.source_record_complete is True
+
+
+def test_incomplete_historical_innings_is_source_ended():
+    raw = cricsheet_match(
+        [innings("Alpha", [over(0, [delivery(actual_delivery="0.1", batter_runs=1)])])],
+        outcome={"result": "no result"},
+        overs=20,
+    )
+    _, states = _states(raw, "incomplete")
+    final = states[-1]
+    assert final.legal_balls == 1
+    assert final.innings_wickets == 0
+    assert final.innings_completion_reason == InningsCompletionReason.SOURCE_ENDED
+    assert final.match_completion_reason == MatchCompletionReason.SOURCE_ENDED
+    assert final.match_complete is True
+    assert final.is_active_prediction_state is False
+    assert final.knowledge_horizon == KnowledgeHorizon.AFTER_INNINGS
+
+
+def test_penalty_timing_is_visible_for_later_ml():
+    raw = cricsheet_match(
+        [
+            innings(
+                "Alpha",
+                [over(0, [delivery(actual_delivery="0.1", batter_runs=1)])],
+                penalty_runs={"pre": 5, "post": 6},
+            )
+        ]
+    )
+    _, states = _states(raw, "penalty-horizon")
+    opening = states[0]
+    delivery_state = next(state for state in states if state.last_delivery)
+    final = states[-1]
+    assert opening.knowledge_horizon == KnowledgeHorizon.PRE_INNINGS
+    assert opening.includes_pre_innings_penalty is True
+    assert opening.includes_post_innings_penalty is False
+    assert opening.innings_runs == 5
+    assert delivery_state.innings_runs_at_delivery == 6
+    assert final.includes_post_innings_penalty is True
+    assert final.knowledge_horizon == KnowledgeHorizon.AFTER_INNINGS
+    assert final.innings_runs_at_delivery == 6
+    assert final.innings_runs == 12
+    assert final.is_active_prediction_state is False

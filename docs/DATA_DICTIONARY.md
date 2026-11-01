@@ -76,6 +76,18 @@ are the situation immediately after that many deliveries.
 | `required_run_rate` | `(runs_remaining / balls_remaining) * balls_per_over` |
 | `wickets_remaining` | `10 - absent_hurt_count - innings_wickets` |
 | `is_super_over` | From source `super_over` |
+| `innings_complete` | This innings has ended for cricket or source reasons |
+| `innings_just_completed` | True only on the first state where the innings became complete |
+| `innings_completion_reason` | `target_reached`, `all_out`, `overs_exhausted`, `declared`, `forfeited`, or `source_ended` |
+| `match_complete` | The match is no longer an active contest |
+| `match_completion_reason` | `target_reached`, `last_innings_complete`, `source_ended`, or `no_innings` |
+| `is_active_prediction_state` | False once the innings or match is complete; later ML must not treat these as live states |
+| `source_record_complete` | No further source deliveries remain in the match |
+| `source_delivery_after_terminal` | This source delivery was recorded after the innings/match had already ended |
+| `knowledge_horizon` | `pre_innings`, `at_delivery`, or `after_innings` |
+| `includes_pre_innings_penalty` | Pre-innings penalty is already in the score |
+| `includes_post_innings_penalty` | Post-innings penalty is already in `innings_runs` |
+| `innings_runs_at_delivery` | Score available at the delivery, excluding post-innings penalty |
 | `outcome` | Copied from source; never inferred by the engine |
 
 ## Assumptions
@@ -85,7 +97,9 @@ are the situation immediately after that many deliveries.
 3. `retired out` does count toward all-out.
 4. Standard all-out is 10 wickets, reduced by `absent_hurt`. Squad size is not
    used because player lists can include substitutes.
-5. Target overs use cricket notation: `35.1` means 35 overs + 1 ball.
+5. Target overs use cricket notation, not decimals: `35.1` means 35 overs + 1
+   ball, and `19.5` is valid. The ball component must be less than
+   `balls_per_over`, so `5.6` is rejected for a six-ball over.
 6. Super-over scheduled length is one over unless the source supplies target overs.
 7. Super-over chase target is derived only when Cricsheet omits `target` and a
    previous super-over innings by the other team exists.

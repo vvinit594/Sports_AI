@@ -130,3 +130,104 @@ def test_parser_does_not_require_supersubs():
     raw["info"].pop("supersubs", None)
     match = parse_cricsheet_dict(raw, source_match_id="no-supersub")
     assert match.info.supersubs == {}
+
+
+def test_parser_rejects_duplicate_overs():
+    raw = cricsheet_match(
+        [
+            innings(
+                "Alpha",
+                [
+                    over(0, [delivery(actual_delivery="0.1")]),
+                    over(0, [delivery(actual_delivery="0.1")]),
+                ],
+            )
+        ]
+    )
+    with pytest.raises(ParseError, match="duplicate over"):
+        parse_cricsheet_dict(raw, source_match_id="dup-over")
+
+
+def test_parser_rejects_out_of_order_overs():
+    raw = cricsheet_match(
+        [
+            innings(
+                "Alpha",
+                [
+                    over(2, [delivery(actual_delivery="2.1")]),
+                    over(1, [delivery(actual_delivery="1.1")]),
+                ],
+            )
+        ]
+    )
+    with pytest.raises(ParseError, match="out-of-order"):
+        parse_cricsheet_dict(raw, source_match_id="ooo")
+
+
+def test_parser_rejects_negative_and_inconsistent_runs():
+    raw = cricsheet_match([innings("Alpha", [over(0, [delivery(actual_delivery="0.1")])])])
+    raw["innings"][0]["overs"][0]["deliveries"][0]["runs"] = {
+        "batter": -1,
+        "extras": 0,
+        "total": -1,
+    }
+    with pytest.raises(ParseError, match="negative"):
+        parse_cricsheet_dict(raw, source_match_id="neg")
+
+    raw["innings"][0]["overs"][0]["deliveries"][0]["runs"] = {
+        "batter": 1,
+        "extras": 1,
+        "total": 1,
+    }
+    with pytest.raises(ParseError, match="inconsistent"):
+        parse_cricsheet_dict(raw, source_match_id="inconsistent")
+
+
+def test_parser_rejects_malformed_wickets_and_extras():
+    raw = cricsheet_match([innings("Alpha", [over(0, [delivery(actual_delivery="0.1")])])])
+    raw["innings"][0]["overs"][0]["deliveries"][0]["wickets"] = {"kind": "bowled"}
+    with pytest.raises(ParseError, match="wickets must be an array"):
+        parse_cricsheet_dict(raw, source_match_id="bad-wickets")
+
+    raw = cricsheet_match(
+        [
+            innings(
+                "Alpha",
+                [over(0, [delivery(actual_delivery="0.1", extras_runs=1, extras={"wides": 1})])],
+            )
+        ]
+    )
+    raw["innings"][0]["overs"][0]["deliveries"][0]["extras"] = {"wides": -2}
+    raw["innings"][0]["overs"][0]["deliveries"][0]["runs"] = {
+        "batter": 0,
+        "extras": 1,
+        "total": 1,
+    }
+    with pytest.raises(ParseError, match="cannot be negative"):
+        parse_cricsheet_dict(raw, source_match_id="neg-extra")
+
+
+def test_parser_rejects_invalid_batting_team_and_target_overs():
+    raw = cricsheet_match([innings("Gamma", [over(0, [delivery(actual_delivery="0.1")])])])
+    with pytest.raises(ParseError, match="not in info.teams"):
+        parse_cricsheet_dict(raw, source_match_id="bad-team")
+
+    raw = cricsheet_match(
+        [
+            innings("Alpha", [over(0, [delivery(actual_delivery="0.1")])]),
+            innings(
+                "Beta",
+                [over(0, [delivery(actual_delivery="0.1")])],
+                target={"overs": 5.6, "runs": 10},
+            ),
+        ]
+    )
+    with pytest.raises(ParseError, match="invalid target.overs"):
+        parse_cricsheet_dict(raw, source_match_id="bad-target-overs")
+
+
+def test_parser_rejects_empty_over():
+    raw = cricsheet_match([innings("Alpha", [over(0, [delivery(actual_delivery="0.1")])])])
+    raw["innings"][0]["overs"][0]["deliveries"] = []
+    with pytest.raises(ParseError, match="no deliveries"):
+        parse_cricsheet_dict(raw, source_match_id="empty-over")

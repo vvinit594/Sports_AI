@@ -1,3 +1,5 @@
+import pytest
+
 from app.core.cricket_rules import (
     balls_to_overs_notation,
     counts_as_wicket,
@@ -36,8 +38,28 @@ def test_overs_notation_uses_cricket_balls_not_decimals():
     assert overs_notation_to_balls(20) == 120
     assert overs_notation_to_balls(6) == 36
     assert overs_notation_to_balls(35.1) == 211
-    assert overs_notation_to_balls("5.6") == 36
+    assert overs_notation_to_balls("19.5") == 119
+    assert overs_notation_to_balls("20.0") == 120
     assert overs_notation_to_balls(None) is None
+
+
+def test_overs_notation_rejects_invalid_values():
+    with pytest.raises(ValueError, match="ball component"):
+        overs_notation_to_balls("5.6")
+    with pytest.raises(ValueError, match="ball component"):
+        overs_notation_to_balls(5.6)
+    with pytest.raises(ValueError, match="negative"):
+        overs_notation_to_balls(-1)
+    with pytest.raises(ValueError, match="negative"):
+        overs_notation_to_balls("-2.1")
+    with pytest.raises(ValueError, match="malformed"):
+        overs_notation_to_balls("1.2.3")
+    with pytest.raises(ValueError, match="malformed"):
+        overs_notation_to_balls("abc")
+    with pytest.raises(ValueError, match="malformed"):
+        overs_notation_to_balls("19.")
+    with pytest.raises(ValueError, match="malformed"):
+        overs_notation_to_balls(True)
 
 
 def test_balls_to_overs_notation():

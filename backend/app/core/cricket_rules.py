@@ -59,21 +59,76 @@ def overs_notation_to_balls(
     """Convert cricket overs notation to legal balls.
 
     Cricsheet target overs use cricket notation, not decimal overs:
-    20 -> 120 balls, 6 -> 36 balls, 35.1 -> 35 overs + 1 ball = 211 balls.
+    20 -> 120 balls, 19.5 -> 119 balls, 35.1 -> 35 overs + 1 ball = 211 balls.
+
+    The ball component must be strictly less than ``balls_per_over``.
+    ``5.6`` is therefore invalid for a six-ball over; six legal balls are ``6.0``.
     """
 
     if value is None:
         return None
+    if isinstance(value, bool):
+        raise ValueError(f"malformed overs notation: {value!r}")
     if balls_per_over <= 0:
         raise ValueError("balls_per_over must be positive")
 
-    text = str(value).strip()
-    if not text:
+    text = _overs_notation_text(value)
+    if text is None:
         return None
+
     if "." in text:
         overs_text, balls_text = text.split(".", 1)
-        return int(overs_text) * balls_per_over + int(balls_text)
-    return int(float(text)) * balls_per_over
+        if not overs_text or not balls_text or not _is_int_token(overs_text) or not _is_int_token(balls_text):
+            raise ValueError(f"malformed overs notation: {value!r}")
+        overs = int(overs_text)
+        balls = int(balls_text)
+        if overs < 0 or balls < 0:
+            raise ValueError(f"negative overs notation is invalid: {value!r}")
+        if balls >= balls_per_over:
+            raise ValueError(
+                f"invalid cricket overs notation {value!r}: ball component {balls} "
+                f"must be less than {balls_per_over}"
+            )
+        return overs * balls_per_over + balls
+
+    if not _is_int_token(text):
+        raise ValueError(f"malformed overs notation: {value!r}")
+    overs = int(text)
+    if overs < 0:
+        raise ValueError(f"negative overs notation is invalid: {value!r}")
+    return overs * balls_per_over
+
+
+def _overs_notation_text(value: int | float | str) -> str | None:
+    if isinstance(value, str):
+        text = value.strip()
+        return text or None
+    if isinstance(value, int):
+        return str(value)
+    if isinstance(value, float):
+        if value != value:  # NaN
+            raise ValueError(f"malformed overs notation: {value!r}")
+        return format(value, ".10f").rstrip("0").rstrip(".")
+    raise ValueError(f"malformed overs notation: {value!r}")
+
+
+def _is_int_token(text: str) -> bool:
+    if text.startswith("-"):
+        return len(text) > 1 and text[1:].isdigit()
+    return text.isdigit()
+
+
+def target_reached(innings_runs: int, target: int | None) -> bool:
+    return target is not None and innings_runs >= target
+
+
+def innings_is_all_out(innings_wickets: int, absent_hurt_count: int = 0) -> bool:
+    available = max_wickets_available(absent_hurt_count)
+    return available > 0 and innings_wickets >= available
+
+
+def scheduled_balls_exhausted(legal_balls: int, scheduled_balls: int | None) -> bool:
+    return scheduled_balls is not None and legal_balls >= scheduled_balls
 
 
 def balls_to_overs_notation(

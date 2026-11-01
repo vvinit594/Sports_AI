@@ -96,5 +96,9 @@ become a local-development requirement for match processing.
 3. Engine increments legal balls only for legal deliveries.
 4. Engine increments counting wickets from dismissal kind.
 5. Engine recalculates overs, CRR, remaining balls/runs, and RRR.
-6. After the last delivery of an innings, post-penalty runs are applied and
-   `innings_just_completed` is set.
+6. After each delivery the engine checks chase-complete, all-out, and
+   overs-exhausted conditions. The first innings ending does not end the match.
+7. Post-innings penalty runs are applied only on the after-innings snapshot.
+   `innings_runs_at_delivery` keeps the score that was known on the ball.
+8. Later source deliveries after a terminal condition are preserved and flagged
+   as `source_delivery_after_terminal`. They are not active prediction states.

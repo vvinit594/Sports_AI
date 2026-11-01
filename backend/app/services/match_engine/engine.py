@@ -5,13 +5,22 @@ from __future__ import annotations
 from app.core.cricket_rules import (
     balls_to_overs_notation,
     current_run_rate,
+    innings_is_all_out,
     is_known_dismissal_kind,
     max_wickets_available,
     required_run_rate,
+    scheduled_balls_exhausted,
     scheduled_balls_for_innings,
+    target_reached,
 )
 from app.core.exceptions import MatchEngineError
-from app.schemas.enums import InningsPhase, TargetSource
+from app.schemas.enums import (
+    InningsCompletionReason,
+    InningsPhase,
+    KnowledgeHorizon,
+    MatchCompletionReason,
+    TargetSource,
+)
 from app.schemas.match import NormalizedDelivery, NormalizedInnings, NormalizedMatch
 from app.schemas.state import DeliveryApplied, MatchState
 
@@ -44,23 +53,91 @@ class MatchStateEngine:
 
         for innings in self.match.innings:
             if innings.innings_number != (current.innings_number or 1):
+                already_complete = current.match_complete
+                already_reason = current.match_completion_reason
                 current = self._new_innings_state(
                     innings,
                     sequence=current.sequence,
                     completed_totals=completed_totals,
                 )
+                if already_complete:
+                    current = current.model_copy(
+                        update={
+                            "match_complete": True,
+                            "match_completion_reason": already_reason,
+                            "is_active_prediction_state": False,
+                        }
+                    )
 
             if not innings.deliveries:
-                current = self._finalize_innings(current, innings)
+                reason = self._empty_innings_reason(innings)
+                current = self._mark_innings_complete(current, innings, reason, just_completed=True)
+                current = self._apply_post_innings_knowledge(current, innings)
+                current = self._maybe_complete_match(
+                    current,
+                    innings,
+                    reason,
+                    is_last_source_delivery=True,
+                )
                 if current not in states:
                     states.append(current)
                 completed_totals[innings.innings_number] = current.innings_runs
                 continue
 
+            innings_already_complete = False
+            completion_reason: InningsCompletionReason | None = None
             for index, delivery in enumerate(innings.deliveries):
+                is_last = index == len(innings.deliveries) - 1
                 current = self._apply_delivery(current, innings, delivery)
-                if index == len(innings.deliveries) - 1:
-                    current = self._finalize_innings(current, innings)
+                if innings_already_complete:
+                    current = current.model_copy(
+                        update={
+                            "source_delivery_after_terminal": True,
+                            "is_active_prediction_state": False,
+                            "innings_complete": True,
+                            "innings_just_completed": False,
+                            "innings_completion_reason": completion_reason,
+                            "match_complete": current.match_complete,
+                            "match_completion_reason": current.match_completion_reason,
+                        }
+                    )
+                else:
+                    reason = self._cricket_terminal_reason(current, innings)
+                    if reason is not None:
+                        innings_already_complete = True
+                        completion_reason = reason
+                        current = self._mark_innings_complete(
+                            current,
+                            innings,
+                            reason,
+                            just_completed=True,
+                        )
+                        current = self._maybe_complete_match(
+                            current,
+                            innings,
+                            reason,
+                            is_last_source_delivery=is_last,
+                        )
+
+                if is_last:
+                    if not innings_already_complete:
+                        completion_reason = InningsCompletionReason.SOURCE_ENDED
+                        current = self._mark_innings_complete(
+                            current,
+                            innings,
+                            completion_reason,
+                            just_completed=True,
+                        )
+                        current = self._maybe_complete_match(
+                            current,
+                            innings,
+                            completion_reason,
+                            is_last_source_delivery=True,
+                        )
+                    current = self._apply_post_innings_knowledge(current, innings)
+                    if innings.innings_number == len(self.match.innings):
+                        current = current.model_copy(update={"source_record_complete": True})
+
                 states.append(current)
 
             completed_totals[innings.innings_number] = current.innings_runs
@@ -86,7 +163,7 @@ class MatchStateEngine:
             raise MatchEngineError("delivery innings does not match current innings")
 
         warnings = list(state.warnings)
-        innings_runs = state.innings_runs + delivery.total_runs
+        innings_runs = state.innings_runs_at_delivery + delivery.total_runs
         legal_balls = state.legal_balls + (1 if delivery.is_legal_delivery else 0)
         total_deliveries = state.total_deliveries + 1
         wicket_events = state.innings_wicket_events + len(delivery.wickets)
@@ -103,6 +180,7 @@ class MatchStateEngine:
             innings=innings,
             sequence=delivery.sequence,
             innings_runs=innings_runs,
+            innings_runs_at_delivery=innings_runs,
             innings_wickets=wickets,
             innings_wicket_events=wicket_events,
             legal_balls=legal_balls,
@@ -122,8 +200,16 @@ class MatchStateEngine:
                 wickets=delivery.wickets,
             ),
             warnings=tuple(warnings),
+            knowledge_horizon=KnowledgeHorizon.AT_DELIVERY,
+            includes_post_innings_penalty=False,
+            innings_complete=False,
             innings_just_completed=False,
-            match_complete=False,
+            innings_completion_reason=None,
+            match_complete=state.match_complete,
+            match_completion_reason=state.match_completion_reason,
+            is_active_prediction_state=not state.match_complete,
+            source_record_complete=False,
+            source_delivery_after_terminal=False,
             target=state.target,
             target_source=state.target_source,
             scheduled_balls=state.scheduled_balls,
@@ -144,26 +230,112 @@ class MatchStateEngine:
             match_type=self.match.info.match_type,
             balls_per_over=self.match.info.balls_per_over,
         )
+        opening_runs = innings.penalty_runs.pre
         return self._build_state(
             innings=innings,
             sequence=sequence,
-            innings_runs=innings.penalty_runs.pre,
+            innings_runs=opening_runs,
+            innings_runs_at_delivery=opening_runs,
             innings_wickets=0,
             innings_wicket_events=0,
             legal_balls=0,
             total_deliveries=0,
             last_delivery=None,
             warnings=(),
+            knowledge_horizon=KnowledgeHorizon.PRE_INNINGS,
+            includes_post_innings_penalty=False,
+            innings_complete=False,
             innings_just_completed=False,
+            innings_completion_reason=None,
             match_complete=False,
+            match_completion_reason=None,
+            is_active_prediction_state=True,
+            source_record_complete=False,
+            source_delivery_after_terminal=False,
             target=target,
             target_source=target_source,
             scheduled_balls=scheduled_balls,
         )
 
-    def _finalize_innings(self, state: MatchState, innings: NormalizedInnings) -> MatchState:
-        innings_runs = state.innings_runs + innings.penalty_runs.post
+    def _cricket_terminal_reason(
+        self,
+        state: MatchState,
+        innings: NormalizedInnings,
+    ) -> InningsCompletionReason | None:
+        if innings.forfeited:
+            return InningsCompletionReason.FORFEITED
+        if innings.declared:
+            return InningsCompletionReason.DECLARED
+        if target_reached(state.innings_runs_at_delivery, state.target):
+            return InningsCompletionReason.TARGET_REACHED
+        if innings_is_all_out(state.innings_wickets, len(innings.absent_hurt)):
+            return InningsCompletionReason.ALL_OUT
+        if scheduled_balls_exhausted(state.legal_balls, state.scheduled_balls):
+            return InningsCompletionReason.OVERS_EXHAUSTED
+        return None
+
+    def _empty_innings_reason(self, innings: NormalizedInnings) -> InningsCompletionReason:
+        if innings.forfeited:
+            return InningsCompletionReason.FORFEITED
+        if innings.declared:
+            return InningsCompletionReason.DECLARED
+        return InningsCompletionReason.SOURCE_ENDED
+
+    def _mark_innings_complete(
+        self,
+        state: MatchState,
+        innings: NormalizedInnings,
+        reason: InningsCompletionReason,
+        *,
+        just_completed: bool,
+    ) -> MatchState:
+        return state.model_copy(
+            update={
+                "innings_complete": True,
+                "innings_just_completed": just_completed,
+                "innings_completion_reason": reason,
+                "is_active_prediction_state": False,
+            }
+        )
+
+    def _maybe_complete_match(
+        self,
+        state: MatchState,
+        innings: NormalizedInnings,
+        reason: InningsCompletionReason,
+        *,
+        is_last_source_delivery: bool,
+    ) -> MatchState:
         is_last_innings = innings.innings_number == len(self.match.innings)
+        match_reason: MatchCompletionReason | None = None
+        if reason == InningsCompletionReason.TARGET_REACHED:
+            match_reason = MatchCompletionReason.TARGET_REACHED
+        elif is_last_innings and reason in {
+            InningsCompletionReason.ALL_OUT,
+            InningsCompletionReason.OVERS_EXHAUSTED,
+            InningsCompletionReason.DECLARED,
+            InningsCompletionReason.FORFEITED,
+        }:
+            match_reason = MatchCompletionReason.LAST_INNINGS_COMPLETE
+        elif is_last_innings and is_last_source_delivery:
+            match_reason = MatchCompletionReason.SOURCE_ENDED
+
+        if match_reason is None:
+            return state
+        return state.model_copy(
+            update={
+                "match_complete": True,
+                "match_completion_reason": match_reason,
+                "is_active_prediction_state": False,
+            }
+        )
+
+    def _apply_post_innings_knowledge(
+        self,
+        state: MatchState,
+        innings: NormalizedInnings,
+    ) -> MatchState:
+        innings_runs = state.innings_runs_at_delivery + innings.penalty_runs.post
         return state.model_copy(
             update={
                 "innings_runs": innings_runs,
@@ -178,8 +350,9 @@ class MatchStateEngine:
                     state.balls_remaining,
                     self.match.info.balls_per_over,
                 ),
-                "innings_just_completed": True,
-                "match_complete": is_last_innings,
+                "includes_post_innings_penalty": True,
+                "knowledge_horizon": KnowledgeHorizon.AFTER_INNINGS,
+                "innings_complete": True,
             }
         )
 
@@ -214,14 +387,23 @@ class MatchStateEngine:
         innings: NormalizedInnings,
         sequence: int,
         innings_runs: int,
+        innings_runs_at_delivery: int,
         innings_wickets: int,
         innings_wicket_events: int,
         legal_balls: int,
         total_deliveries: int,
         last_delivery: DeliveryApplied | None,
         warnings: tuple[str, ...],
+        knowledge_horizon: KnowledgeHorizon,
+        includes_post_innings_penalty: bool,
+        innings_complete: bool,
         innings_just_completed: bool,
+        innings_completion_reason: InningsCompletionReason | None,
         match_complete: bool,
+        match_completion_reason: MatchCompletionReason | None,
+        is_active_prediction_state: bool,
+        source_record_complete: bool,
+        source_delivery_after_terminal: bool,
         target: int | None,
         target_source: TargetSource,
         scheduled_balls: int | None,
@@ -260,8 +442,18 @@ class MatchStateEngine:
             ),
             wickets_remaining=max(0, max_wickets - innings_wickets),
             last_delivery=last_delivery,
+            innings_complete=innings_complete,
             innings_just_completed=innings_just_completed,
+            innings_completion_reason=innings_completion_reason,
             match_complete=match_complete,
+            match_completion_reason=match_completion_reason,
+            is_active_prediction_state=is_active_prediction_state,
+            source_record_complete=source_record_complete,
+            source_delivery_after_terminal=source_delivery_after_terminal,
+            knowledge_horizon=knowledge_horizon,
+            includes_pre_innings_penalty=True,
+            includes_post_innings_penalty=includes_post_innings_penalty,
+            innings_runs_at_delivery=innings_runs_at_delivery,
             outcome=self.match.info.outcome,
             warnings=warnings,
         )
@@ -290,8 +482,18 @@ class MatchStateEngine:
             required_run_rate=None,
             wickets_remaining=None,
             last_delivery=None,
+            innings_complete=True,
             innings_just_completed=False,
+            innings_completion_reason=InningsCompletionReason.SOURCE_ENDED,
             match_complete=True,
+            match_completion_reason=MatchCompletionReason.NO_INNINGS,
+            is_active_prediction_state=False,
+            source_record_complete=True,
+            source_delivery_after_terminal=False,
+            knowledge_horizon=KnowledgeHorizon.AFTER_INNINGS,
+            includes_pre_innings_penalty=False,
+            includes_post_innings_penalty=False,
+            innings_runs_at_delivery=0,
             outcome=self.match.info.outcome,
             warnings=("match contains no innings",),
         )

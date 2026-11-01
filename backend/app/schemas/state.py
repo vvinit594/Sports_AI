@@ -4,7 +4,13 @@ from __future__ import annotations
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.schemas.enums import InningsPhase, TargetSource
+from app.schemas.enums import (
+    InningsCompletionReason,
+    InningsPhase,
+    KnowledgeHorizon,
+    MatchCompletionReason,
+    TargetSource,
+)
 from app.schemas.match import OutcomeInfo, WicketInfo
 
 
@@ -58,7 +64,17 @@ class MatchState(BaseModel):
     wickets_remaining: int | None
 
     last_delivery: DeliveryApplied | None = None
+    innings_complete: bool = False
     innings_just_completed: bool = False
+    innings_completion_reason: InningsCompletionReason | None = None
     match_complete: bool = False
+    match_completion_reason: MatchCompletionReason | None = None
+    is_active_prediction_state: bool = True
+    source_record_complete: bool = False
+    source_delivery_after_terminal: bool = False
+    knowledge_horizon: KnowledgeHorizon = KnowledgeHorizon.AT_DELIVERY
+    includes_pre_innings_penalty: bool = False
+    includes_post_innings_penalty: bool = False
+    innings_runs_at_delivery: int = 0
     outcome: OutcomeInfo
     warnings: tuple[str, ...] = Field(default_factory=tuple)

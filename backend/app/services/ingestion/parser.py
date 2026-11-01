@@ -10,8 +10,8 @@ import json
 from pathlib import Path
 from typing import Any
 
-from app.core.constants import DEFAULT_BALLS_PER_OVER, SOURCE_NAME
-from app.core.cricket_rules import counts_as_wicket, is_legal_delivery
+from app.core.constants import DEFAULT_BALLS_PER_OVER, KNOWN_EXTRA_TYPES, SOURCE_NAME
+from app.core.cricket_rules import counts_as_wicket, is_legal_delivery, overs_notation_to_balls
 from app.core.exceptions import ParseError
 from app.schemas.match import (
     EventInfo,
@@ -75,7 +75,15 @@ def parse_cricsheet_dict(
         source_path=source_path,
     )
     match_info = _parse_match_info(info, teams)
-    innings = _parse_innings(innings_raw, teams=teams)
+    if match_info.balls_per_over <= 0:
+        raise ParseError("info.balls_per_over must be a positive integer")
+    if match_info.scheduled_overs is not None and match_info.scheduled_overs < 0:
+        raise ParseError("info.overs cannot be negative")
+    innings = _parse_innings(
+        innings_raw,
+        teams=teams,
+        balls_per_over=match_info.balls_per_over,
+    )
     return NormalizedMatch(provenance=provenance, info=match_info, innings=innings)
 
 
@@ -182,6 +190,7 @@ def _parse_innings(
     innings_raw: list[Any],
     *,
     teams: tuple[str, ...],
+    balls_per_over: int,
 ) -> tuple[NormalizedInnings, ...]:
     parsed: list[NormalizedInnings] = []
     sequence = 0
@@ -189,17 +198,29 @@ def _parse_innings(
         if not isinstance(innings, dict):
             raise ParseError(f"innings[{index}] must be an object")
         batting_team = _require_str(innings, "team")
+        if batting_team not in teams:
+            raise ParseError(f"innings[{index}] team '{batting_team}' is not in info.teams")
         bowling_team = _other_team(batting_team, teams)
         target = None
         if innings.get("target"):
             target_raw = _expect_object(innings, "target")
-            target = TargetInfo(
-                runs=_optional_int(target_raw.get("runs")),
-                overs=target_raw.get("overs"),
-            )
+            target_runs = _optional_int(target_raw.get("runs"))
+            if target_runs is not None and target_runs < 0:
+                raise ParseError(f"innings[{index}] target.runs cannot be negative")
+            target_overs = target_raw.get("overs")
+            if target_overs is not None:
+                try:
+                    overs_notation_to_balls(target_overs, balls_per_over)
+                except ValueError as exc:
+                    raise ParseError(f"innings[{index}] has invalid target.overs: {exc}") from exc
+            target = TargetInfo(runs=target_runs, overs=target_overs)
         penalty_raw = innings.get("penalty_runs") or {}
         if penalty_raw and not isinstance(penalty_raw, dict):
             raise ParseError(f"innings[{index}].penalty_runs must be an object")
+        penalty_pre = _optional_int((penalty_raw or {}).get("pre")) or 0
+        penalty_post = _optional_int((penalty_raw or {}).get("post")) or 0
+        if penalty_pre < 0 or penalty_post < 0:
+            raise ParseError(f"innings[{index}] penalty_runs cannot be negative")
 
         overs_raw = innings.get("overs")
         if overs_raw is None:
@@ -209,13 +230,27 @@ def _parse_innings(
 
         innings_delivery_number = 0
         overs: list[NormalizedOver] = []
+        seen_overs: set[int] = set()
+        previous_over_number: int | None = None
         for over in overs_raw:
             if not isinstance(over, dict):
                 raise ParseError(f"innings[{index}] contains a non-object over")
             over_number = _require_int(over, "over")
+            if over_number < 0:
+                raise ParseError(f"innings[{index}] has a negative over number {over_number}")
+            if over_number in seen_overs:
+                raise ParseError(f"duplicate over {over_number} in innings {index}")
+            if previous_over_number is not None and over_number < previous_over_number:
+                raise ParseError(
+                    f"out-of-order over {over_number} after {previous_over_number} in innings {index}"
+                )
+            seen_overs.add(over_number)
+            previous_over_number = over_number
             deliveries_raw = over.get("deliveries")
             if not isinstance(deliveries_raw, list):
                 raise ParseError(f"over {over_number} in innings {index} is missing deliveries")
+            if not deliveries_raw:
+                raise ParseError(f"over {over_number} in innings {index} has no deliveries")
             deliveries: list[NormalizedDelivery] = []
             for delivery_in_over, delivery_raw in enumerate(deliveries_raw, start=1):
                 if not isinstance(delivery_raw, dict):
@@ -243,10 +278,7 @@ def _parse_innings(
                 declared=bool(innings.get("declared")),
                 forfeited=bool(innings.get("forfeited")),
                 target=target,
-                penalty_runs=PenaltyRunsInfo(
-                    pre=_optional_int((penalty_raw or {}).get("pre")) or 0,
-                    post=_optional_int((penalty_raw or {}).get("post")) or 0,
-                ),
+                penalty_runs=PenaltyRunsInfo(pre=penalty_pre, post=penalty_post),
                 absent_hurt=_string_tuple(innings.get("absent_hurt")),
                 powerplays=_parse_powerplays(innings.get("powerplays"), index),
                 miscounted_overs=_parse_miscounted(innings.get("miscounted_overs"), index),
@@ -271,21 +303,29 @@ def _parse_delivery(
     total_runs = runs.get("total")
     if batter_runs is None or extras_runs is None or total_runs is None:
         raise ParseError(f"delivery {sequence} is missing runs.batter/extras/total")
+    try:
+        batter_runs = int(batter_runs)
+        extras_runs = int(extras_runs)
+        total_runs = int(total_runs)
+    except (TypeError, ValueError) as exc:
+        raise ParseError(f"delivery {sequence} has non-integer run values") from exc
+    if batter_runs < 0 or extras_runs < 0 or total_runs < 0:
+        raise ParseError(f"delivery {sequence} has negative run values")
+    if batter_runs + extras_runs != total_runs:
+        raise ParseError(
+            f"delivery {sequence} run components are inconsistent: "
+            f"{batter_runs} + {extras_runs} != {total_runs}"
+        )
 
     extras_raw = delivery_raw.get("extras") or {}
     if extras_raw and not isinstance(extras_raw, dict):
         raise ParseError(f"delivery {sequence} extras must be an object")
-    extras = ExtraBreakdown(
-        wides=int(extras_raw.get("wides") or 0),
-        noballs=int(extras_raw.get("noballs") or 0),
-        byes=int(extras_raw.get("byes") or 0),
-        legbyes=int(extras_raw.get("legbyes") or 0),
-        penalty=int(extras_raw.get("penalty") or 0),
-    )
+    extras = _parse_extras(extras_raw, sequence, extras_runs)
 
-    wickets = tuple(
-        _parse_wicket(wicket, sequence) for wicket in (delivery_raw.get("wickets") or [])
-    )
+    wickets_raw = delivery_raw.get("wickets") or []
+    if wickets_raw and not isinstance(wickets_raw, list):
+        raise ParseError(f"delivery {sequence} wickets must be an array")
+    wickets = tuple(_parse_wicket(wicket, sequence) for wicket in wickets_raw)
     return NormalizedDelivery(
         sequence=sequence,
         innings_number=innings_number,
@@ -296,9 +336,9 @@ def _parse_delivery(
         batter=_require_str(delivery_raw, "batter"),
         bowler=_require_str(delivery_raw, "bowler"),
         non_striker=_require_str(delivery_raw, "non_striker"),
-        batter_runs=int(batter_runs),
-        extras_runs=int(extras_runs),
-        total_runs=int(total_runs),
+        batter_runs=batter_runs,
+        extras_runs=extras_runs,
+        total_runs=total_runs,
         extras=extras,
         is_legal_delivery=is_legal_delivery(extras_raw),
         is_wide=bool(extras_raw.get("wides")),
@@ -311,6 +351,33 @@ def _parse_delivery(
         replacements=_parse_replacements(delivery_raw.get("replacements")),
         review=_parse_review(delivery_raw.get("review")),
     )
+
+
+def _parse_extras(extras_raw: dict[str, Any], sequence: int, extras_runs: int) -> ExtraBreakdown:
+    named: dict[str, int] = {}
+    for key, value in extras_raw.items():
+        if value is None:
+            continue
+        try:
+            amount = int(value)
+        except (TypeError, ValueError) as exc:
+            raise ParseError(f"delivery {sequence} extra '{key}' is not an integer") from exc
+        if amount < 0:
+            raise ParseError(f"delivery {sequence} extra '{key}' cannot be negative")
+        if key in KNOWN_EXTRA_TYPES:
+            named[key] = amount
+    extras = ExtraBreakdown(
+        wides=named.get("wides", 0),
+        noballs=named.get("noballs", 0),
+        byes=named.get("byes", 0),
+        legbyes=named.get("legbyes", 0),
+        penalty=named.get("penalty", 0),
+    )
+    if extras.total > extras_runs:
+        raise ParseError(
+            f"delivery {sequence} named extras {extras.total} exceed runs.extras {extras_runs}"
+        )
+    return extras
 
 
 def _parse_wicket(wicket_raw: Any, sequence: int) -> WicketInfo:
