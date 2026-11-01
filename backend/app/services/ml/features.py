@@ -8,6 +8,7 @@ prediction states and are excluded from training by the dataset builder.
 
 from __future__ import annotations
 
+import math
 from collections.abc import Sequence
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -179,7 +180,9 @@ def extract_feature_vector(
     values = {
         "innings_number": float(state.innings_number or 0),
         "is_chase": 1.0 if is_chase_state(state) else 0.0,
-        "is_first_innings": 1.0 if state.innings_number == 1 and not state.is_super_over else 0.0,
+        "is_first_innings": 1.0
+        if state.innings_number == 1 and not state.is_super_over
+        else 0.0,
         "current_score": current_score,
         "wickets_lost": wickets_lost,
         "wickets_remaining": wickets_remaining,
@@ -268,7 +271,9 @@ def _sum_runs(states: Sequence[MatchState]) -> float:
 def _sum_counting_wickets(states: Sequence[MatchState]) -> float:
     total = 0
     for state in states:
-        total += sum(1 for wicket in _delivery(state).wickets if wicket.counts_as_wicket)
+        total += sum(
+            1 for wicket in _delivery(state).wickets if wicket.counts_as_wicket
+        )
     return float(total)
 
 
@@ -325,4 +330,4 @@ def _resources_remaining(
 
 
 def _is_finite(value: float) -> bool:
-    return value == value and value not in {float("inf"), float("-inf")}
+    return math.isfinite(value)

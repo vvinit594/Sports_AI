@@ -1,4 +1,7 @@
-from app.services.ml.evaluate import MATCH_LEVEL_AGGREGATION, evaluate_binary_probabilities
+from app.services.ml.evaluate import (
+    MATCH_LEVEL_AGGREGATION,
+    evaluate_binary_probabilities,
+)
 
 
 def test_match_level_metrics_give_each_match_equal_weight():
@@ -24,7 +27,10 @@ def test_match_level_metrics_give_each_match_equal_weight():
     assert report.match_level.n_negative_matches == 1
     assert report.match_level.accuracy == 0.5
     assert report.match_level.roc_auc is not None
-    assert any("mean delivery probability" in note.lower() or "mean_delivery" in note for note in report.notes)
+    assert any(
+        "mean delivery probability" in note.lower() or "mean_delivery" in note
+        for note in report.notes
+    )
 
 
 def test_delivery_level_metrics_remain_available_as_diagnostics():

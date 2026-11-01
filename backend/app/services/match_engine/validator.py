@@ -31,7 +31,12 @@ def validate_match(
     if raw is not None:
         raw_innings = raw.get("innings")
         if not isinstance(raw_innings, list):
-            errors.append(Issue(code="raw_innings_missing", message="raw document has no innings array"))
+            errors.append(
+                Issue(
+                    code="raw_innings_missing",
+                    message="raw document has no innings array",
+                )
+            )
             raw_innings = []
         elif len(raw_innings) != len(match.innings):
             errors.append(
@@ -151,9 +156,17 @@ def _check_raw_sequence(
                         innings_number=index,
                     )
                 )
-            raw_target = (raw.get("target") or {}).get("runs") if isinstance(raw.get("target"), dict) else None
+            raw_target = (
+                (raw.get("target") or {}).get("runs")
+                if isinstance(raw.get("target"), dict)
+                else None
+            )
             parsed_target = parsed.target.runs if parsed.target else None
-            if raw_target is not None and parsed_target is not None and int(raw_target) != parsed_target:
+            if (
+                raw_target is not None
+                and parsed_target is not None
+                and int(raw_target) != parsed_target
+            ):
                 errors.append(
                     Issue(
                         code="target_mismatch",
@@ -173,7 +186,9 @@ def _check_raw_sequence(
         _check_raw_deliveries(raw, index, errors)
 
 
-def _check_raw_deliveries(raw: dict[str, Any], innings_number: int, errors: list[Issue]) -> None:
+def _check_raw_deliveries(
+    raw: dict[str, Any], innings_number: int, errors: list[Issue]
+) -> None:
     seen_overs: set[int] = set()
     previous_over: int | None = None
     for over in raw.get("overs") or []:
@@ -298,8 +313,14 @@ def _sum_raw_innings(raw: dict[str, Any]) -> dict[str, int | None]:
                 legal_balls += 1
             raw_wickets = delivery.get("wickets") or []
             wicket_events += len(raw_wickets)
-            wickets += sum(1 for wicket in raw_wickets if counts_as_wicket(wicket.get("kind")))
-    target = (raw.get("target") or {}).get("runs") if isinstance(raw.get("target"), dict) else None
+            wickets += sum(
+                1 for wicket in raw_wickets if counts_as_wicket(wicket.get("kind"))
+            )
+    target = (
+        (raw.get("target") or {}).get("runs")
+        if isinstance(raw.get("target"), dict)
+        else None
+    )
     return {
         "runs": runs,
         "wicket_events": wicket_events,
@@ -314,7 +335,9 @@ def _reconstructed_innings_totals(
     innings: NormalizedInnings,
     states: list[Any],
 ) -> dict[str, int | None]:
-    innings_states = [state for state in states if state.innings_number == innings.innings_number]
+    innings_states = [
+        state for state in states if state.innings_number == innings.innings_number
+    ]
     finalized = [
         state
         for state in innings_states
@@ -343,7 +366,9 @@ def _reconstructed_innings_totals(
     }
 
 
-def _check_normalized_delivery_consistency(innings: NormalizedInnings, errors: list[Issue]) -> None:
+def _check_normalized_delivery_consistency(
+    innings: NormalizedInnings, errors: list[Issue]
+) -> None:
     for delivery in innings.deliveries:
         if delivery.batter_runs + delivery.extras_runs != delivery.total_runs:
             errors.append(
@@ -358,25 +383,40 @@ def _check_normalized_delivery_consistency(innings: NormalizedInnings, errors: l
                 )
             )
         extras_named_total = delivery.extras.total
-        if extras_named_total and extras_named_total != delivery.extras_runs:
-            if extras_named_total > delivery.extras_runs:
-                errors.append(
-                    Issue(
-                        code="extras_over_total",
-                        message="named extras exceed runs.extras",
-                        innings_number=innings.innings_number,
-                        sequence=delivery.sequence,
-                    )
+        if extras_named_total and extras_named_total > delivery.extras_runs:
+            errors.append(
+                Issue(
+                    code="extras_over_total",
+                    message="named extras exceed runs.extras",
+                    innings_number=innings.innings_number,
+                    sequence=delivery.sequence,
                 )
+            )
 
 
 def _compare_counts(report: InningsValidation, errors: list[Issue]) -> None:
     checks = (
         ("runs_mismatch", report.source_runs, report.reconstructed_runs),
-        ("wicket_events_mismatch", report.source_wicket_events, report.reconstructed_wicket_events),
-        ("wickets_mismatch", report.source_counting_wickets, report.reconstructed_wickets),
-        ("legal_balls_mismatch", report.source_legal_balls, report.reconstructed_legal_balls),
-        ("deliveries_mismatch", report.source_deliveries, report.reconstructed_deliveries),
+        (
+            "wicket_events_mismatch",
+            report.source_wicket_events,
+            report.reconstructed_wicket_events,
+        ),
+        (
+            "wickets_mismatch",
+            report.source_counting_wickets,
+            report.reconstructed_wickets,
+        ),
+        (
+            "legal_balls_mismatch",
+            report.source_legal_balls,
+            report.reconstructed_legal_balls,
+        ),
+        (
+            "deliveries_mismatch",
+            report.source_deliveries,
+            report.reconstructed_deliveries,
+        ),
     )
     for code, source_value, reconstructed_value in checks:
         if source_value != reconstructed_value:

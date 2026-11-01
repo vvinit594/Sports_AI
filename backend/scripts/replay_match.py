@@ -17,7 +17,9 @@ from app.services.replay import ReplayEngine
 def main() -> int:
     parser = argparse.ArgumentParser(description="Replay a historical Cricsheet match")
     parser.add_argument("path", type=Path, help="Cricsheet JSON file")
-    parser.add_argument("--every", type=int, default=20, help="Print every N deliveries")
+    parser.add_argument(
+        "--every", type=int, default=20, help="Print every N deliveries"
+    )
     args = parser.parse_args()
 
     match = parse_cricsheet_file(args.path)
@@ -28,7 +30,11 @@ def main() -> int:
     )
     states = replay.play_all()
     for state in states:
-        if state.sequence == 0 or state.sequence % args.every == 0 or state.innings_just_completed:
+        if (
+            state.sequence == 0
+            or state.sequence % args.every == 0
+            or state.innings_just_completed
+        ):
             print(
                 f"seq={state.sequence:4d} inn={state.innings_number} "
                 f"{state.batting_team} {state.innings_runs}/{state.innings_wickets} "

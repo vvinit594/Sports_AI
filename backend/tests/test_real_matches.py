@@ -16,28 +16,65 @@ REAL_MATCHES = {
     "1082591.json": {
         "label": "complete men's IPL",
         "innings": [
-            {"runs": 207, "wickets": 4, "legal_balls": 120, "deliveries": 125, "target": None},
-            {"runs": 172, "wickets": 10, "legal_balls": 118, "deliveries": 123, "target": 208},
+            {
+                "runs": 207,
+                "wickets": 4,
+                "legal_balls": 120,
+                "deliveries": 125,
+                "target": None,
+            },
+            {
+                "runs": 172,
+                "wickets": 10,
+                "legal_balls": 118,
+                "deliveries": 123,
+                "target": 208,
+            },
         ],
     },
     "1082648.json": {
         "label": "D/L shortened chase",
         "innings": [
-            {"runs": 128, "wickets": 7, "legal_balls": 120, "deliveries": 122, "target": None},
-            {"runs": 48, "wickets": 3, "legal_balls": 32, "deliveries": 35, "target": 48, "scheduled_balls": 36},
+            {
+                "runs": 128,
+                "wickets": 7,
+                "legal_balls": 120,
+                "deliveries": 122,
+                "target": None,
+            },
+            {
+                "runs": 48,
+                "wickets": 3,
+                "legal_balls": 32,
+                "deliveries": 35,
+                "target": 48,
+                "scheduled_balls": 36,
+            },
         ],
     },
     "1359519.json": {
         "label": "no result one innings",
         "innings": [
-            {"runs": 125, "wickets": 7, "legal_balls": 116, "deliveries": 118, "target": None},
+            {
+                "runs": 125,
+                "wickets": 7,
+                "legal_balls": 116,
+                "deliveries": 118,
+                "target": None,
+            },
         ],
     },
     "1082628.json": {
         "label": "retired hurt",
         "innings": [
             {"runs": 162, "wickets": 8, "wicket_events": 8, "legal_balls": 120},
-            {"runs": 165, "wickets": 5, "wicket_events": 6, "legal_balls": 119, "target": 163},
+            {
+                "runs": 165,
+                "wickets": 5,
+                "wicket_events": 6,
+                "legal_balls": 119,
+                "target": 163,
+            },
         ],
     },
     "1304066.json": {
@@ -58,7 +95,13 @@ REAL_MATCHES = {
         "label": "absent hurt",
         "innings": [
             {"runs": 213, "wickets": 6, "legal_balls": 120},
-            {"runs": 176, "wickets": 9, "legal_balls": 116, "target": 214, "wickets_remaining": 0},
+            {
+                "runs": 176,
+                "wickets": 9,
+                "legal_balls": 116,
+                "target": 214,
+                "wickets_remaining": 0,
+            },
         ],
     },
     "1314906.json": {
@@ -72,9 +115,21 @@ REAL_MATCHES = {
         "label": "super over tie",
         "innings": [
             {"runs": 153, "wickets": 9, "legal_balls": 120, "super_over": False},
-            {"runs": 153, "wickets": 10, "legal_balls": 120, "target": 154, "super_over": False},
+            {
+                "runs": 153,
+                "wickets": 10,
+                "legal_balls": 120,
+                "target": 154,
+                "super_over": False,
+            },
             {"runs": 11, "wickets": 2, "legal_balls": 5, "super_over": True},
-            {"runs": 6, "wickets": 0, "legal_balls": 6, "super_over": True, "derived_target": 12},
+            {
+                "runs": 6,
+                "wickets": 0,
+                "legal_balls": 6,
+                "super_over": True,
+                "derived_target": 12,
+            },
         ],
     },
     "1216517.json": {
@@ -104,7 +159,9 @@ def test_real_match_validates_against_source(filename: str):
     assert report.ok, report.errors
     engine_states = MatchStateEngine(match).reconstruct()
     replay_states = ReplayEngine(match).play_all()
-    assert [state.model_dump() for state in engine_states] == [state.model_dump() for state in replay_states]
+    assert [state.model_dump() for state in engine_states] == [
+        state.model_dump() for state in replay_states
+    ]
 
 
 @pytest.mark.parametrize("filename", _available_matches())
@@ -117,7 +174,8 @@ def test_real_match_reconstructed_totals(filename: str):
         final = [
             state
             for state in states
-            if state.innings_number == innings.innings_number and state.innings_just_completed
+            if state.innings_number == innings.innings_number
+            and state.innings_just_completed
         ][-1]
         assert final.innings_runs == expected["runs"]
         if "wickets" in expected:

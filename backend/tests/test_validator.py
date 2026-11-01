@@ -15,7 +15,11 @@ def test_validator_accepts_consistent_source_totals():
                         0,
                         [
                             delivery(actual_delivery="0.1", batter_runs=4),
-                            delivery(actual_delivery="0.2", extras_runs=1, extras={"wides": 1}),
+                            delivery(
+                                actual_delivery="0.2",
+                                extras_runs=1,
+                                extras={"wides": 1},
+                            ),
                             delivery(
                                 actual_delivery="0.2",
                                 wickets=[{"kind": "bowled", "player_out": "A Batter"}],
@@ -58,7 +62,9 @@ def test_validator_flags_internal_run_component_errors():
                 match.innings[0].model_copy(
                     update={
                         "overs": (
-                            match.innings[0].overs[0].model_copy(
+                            match.innings[0]
+                            .overs[0]
+                            .model_copy(
                                 update={
                                     "deliveries": (
                                         match.deliveries[0].model_copy(
@@ -75,7 +81,10 @@ def test_validator_flags_internal_run_component_errors():
     )
     report = validate_match(broken, raw=raw)
     assert report.ok is False
-    assert {issue.code for issue in report.errors} >= {"runs_components_mismatch", "runs_mismatch"}
+    assert {issue.code for issue in report.errors} >= {
+        "runs_components_mismatch",
+        "runs_mismatch",
+    }
 
 
 def test_validator_detects_legal_ball_and_wicket_mismatches():
@@ -142,7 +151,9 @@ def test_validator_detects_innings_count_and_sequence_errors():
 def test_validator_detects_target_inconsistency():
     raw = cricsheet_match(
         [
-            innings("Alpha", [over(0, [delivery(actual_delivery="0.1", batter_runs=4)])]),
+            innings(
+                "Alpha", [over(0, [delivery(actual_delivery="0.1", batter_runs=4)])]
+            ),
             innings(
                 "Beta",
                 [over(0, [delivery(actual_delivery="0.1")])],

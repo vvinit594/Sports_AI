@@ -21,6 +21,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from enum import StrEnum
+from itertools import pairwise
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -79,7 +80,7 @@ def detect_significant_moments(
     moments: list[SignificantMoment] = []
     last_emitted_sequence: int | None = None
 
-    for previous, current in zip(ordered, ordered[1:]):
+    for previous, current in pairwise(ordered):
         if (
             last_emitted_sequence is not None
             and current.sequence - last_emitted_sequence < settings.cooldown_deliveries
@@ -116,7 +117,9 @@ def _require_single_match_id(
 ) -> str:
     prediction_ids = {item.source_match_id for item in predictions}
     if len(prediction_ids) != 1:
-        raise IntelligenceError("predictions must all belong to the same source_match_id")
+        raise IntelligenceError(
+            "predictions must all belong to the same source_match_id"
+        )
     match_id = next(iter(prediction_ids))
     state_ids = {state.source_match_id for state in states}
     if any(state_id != match_id for state_id in state_ids):
@@ -133,7 +136,9 @@ def _index_predictions(
     indexed: dict[int, ProbabilityPrediction] = {}
     for prediction in predictions:
         if prediction.source_match_id != match_id:
-            raise IntelligenceError("predictions must all belong to the same source_match_id")
+            raise IntelligenceError(
+                "predictions must all belong to the same source_match_id"
+            )
         existing = indexed.get(prediction.sequence)
         if existing is None:
             indexed[prediction.sequence] = prediction
@@ -191,8 +196,7 @@ def _classify(
         )
 
     counting_wicket = bool(
-        delivery
-        and any(wicket.counts_as_wicket for wicket in delivery.wickets)
+        delivery and any(wicket.counts_as_wicket for wicket in delivery.wickets)
     )
     high_pressure = _is_high_pressure(current, config)
     if counting_wicket and high_pressure:
@@ -234,7 +238,9 @@ def _rrr_delta(previous: MatchState, current: MatchState) -> float | None:
     return abs(current.required_run_rate - previous.required_run_rate)
 
 
-def _context(state: MatchState, *, extra_types: Sequence[MomentType]) -> dict[str, object]:
+def _context(
+    state: MatchState, *, extra_types: Sequence[MomentType]
+) -> dict[str, object]:
     return {
         "innings_number": state.innings_number,
         "batting_team": state.batting_team,

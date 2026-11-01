@@ -254,7 +254,9 @@ def test_mixed_match_ids_are_rejected():
         chase_runs=[1, 1, 0, 0],
         winner="Beta",
     )
-    predictions = _predictions(states_a, [0.40, 0.55]) + _predictions(states_b, [0.10, 0.90])
+    predictions = _predictions(states_a, [0.40, 0.55]) + _predictions(
+        states_b, [0.10, 0.90]
+    )
     with pytest.raises(IntelligenceError, match="same source_match_id"):
         detect_significant_moments(states_a, predictions)
 
@@ -326,7 +328,11 @@ def test_cooldown_uses_delivery_sequence_numbers():
         chase_runs=[1, 1, 1, 1, 1, 1],
         winner="Beta",
     )
-    chase = [state for state in states if is_chase_training_state(state) and state.last_delivery]
+    chase = [
+        state
+        for state in states
+        if is_chase_training_state(state) and state.last_delivery
+    ]
     first, second, last = chase[0], chase[1], chase[-1]
     gap = last.sequence - second.sequence
     assert gap >= 2

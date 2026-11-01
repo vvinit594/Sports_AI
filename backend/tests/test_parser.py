@@ -43,7 +43,13 @@ def test_parser_normalizes_legal_and_illegal_deliveries():
     )
     match = parse_cricsheet_dict(raw, source_match_id="synthetic-extras")
     deliveries = match.deliveries
-    assert [item.is_legal_delivery for item in deliveries] == [True, False, False, True, True]
+    assert [item.is_legal_delivery for item in deliveries] == [
+        True,
+        False,
+        False,
+        True,
+        True,
+    ]
     assert deliveries[1].is_wide is True
     assert deliveries[2].is_noball is True
     assert deliveries[3].is_bye is True
@@ -52,7 +58,9 @@ def test_parser_normalizes_legal_and_illegal_deliveries():
 
 
 def test_season_integer_is_coerced_to_string():
-    raw = cricsheet_match([innings("Alpha", [over(0, [delivery(actual_delivery="0.1")])])], season=2017)
+    raw = cricsheet_match(
+        [innings("Alpha", [over(0, [delivery(actual_delivery="0.1")])])], season=2017
+    )
     match = parse_cricsheet_dict(raw, source_match_id="season-int")
     assert match.info.season == "2017"
 
@@ -73,7 +81,9 @@ def test_wickets_preserve_kind_and_counting_flag():
                             delivery(
                                 actual_delivery="0.2",
                                 batter_runs=1,
-                                wickets=[{"kind": "retired hurt", "player_out": "A Batter"}],
+                                wickets=[
+                                    {"kind": "retired hurt", "player_out": "A Batter"}
+                                ],
                             ),
                             delivery(
                                 actual_delivery="0.3",
@@ -88,7 +98,10 @@ def test_wickets_preserve_kind_and_counting_flag():
         ]
     )
     match = parse_cricsheet_dict(raw, source_match_id="wickets")
-    kinds = [(item.wickets[0].kind, item.wickets[0].counts_as_wicket, item.is_legal_delivery) for item in match.deliveries]
+    kinds = [
+        (item.wickets[0].kind, item.wickets[0].counts_as_wicket, item.is_legal_delivery)
+        for item in match.deliveries
+    ]
     assert kinds == [
         ("bowled", True, True),
         ("retired hurt", False, True),
@@ -99,7 +112,9 @@ def test_wickets_preserve_kind_and_counting_flag():
 def test_super_over_and_target_are_preserved_not_invented():
     raw = cricsheet_match(
         [
-            innings("Alpha", [over(0, [delivery(actual_delivery="0.1", batter_runs=4)])]),
+            innings(
+                "Alpha", [over(0, [delivery(actual_delivery="0.1", batter_runs=4)])]
+            ),
             innings(
                 "Beta",
                 [over(0, [delivery(actual_delivery="0.1", batter_runs=1)])],
@@ -126,7 +141,9 @@ def test_missing_required_fields_raise():
 
 
 def test_parser_does_not_require_supersubs():
-    raw = cricsheet_match([innings("Alpha", [over(0, [delivery(actual_delivery="0.1")])])])
+    raw = cricsheet_match(
+        [innings("Alpha", [over(0, [delivery(actual_delivery="0.1")])])]
+    )
     raw["info"].pop("supersubs", None)
     match = parse_cricsheet_dict(raw, source_match_id="no-supersub")
     assert match.info.supersubs == {}
@@ -165,7 +182,9 @@ def test_parser_rejects_out_of_order_overs():
 
 
 def test_parser_rejects_negative_and_inconsistent_runs():
-    raw = cricsheet_match([innings("Alpha", [over(0, [delivery(actual_delivery="0.1")])])])
+    raw = cricsheet_match(
+        [innings("Alpha", [over(0, [delivery(actual_delivery="0.1")])])]
+    )
     raw["innings"][0]["overs"][0]["deliveries"][0]["runs"] = {
         "batter": -1,
         "extras": 0,
@@ -184,7 +203,9 @@ def test_parser_rejects_negative_and_inconsistent_runs():
 
 
 def test_parser_rejects_malformed_wickets_and_extras():
-    raw = cricsheet_match([innings("Alpha", [over(0, [delivery(actual_delivery="0.1")])])])
+    raw = cricsheet_match(
+        [innings("Alpha", [over(0, [delivery(actual_delivery="0.1")])])]
+    )
     raw["innings"][0]["overs"][0]["deliveries"][0]["wickets"] = {"kind": "bowled"}
     with pytest.raises(ParseError, match="wickets must be an array"):
         parse_cricsheet_dict(raw, source_match_id="bad-wickets")
@@ -193,7 +214,18 @@ def test_parser_rejects_malformed_wickets_and_extras():
         [
             innings(
                 "Alpha",
-                [over(0, [delivery(actual_delivery="0.1", extras_runs=1, extras={"wides": 1})])],
+                [
+                    over(
+                        0,
+                        [
+                            delivery(
+                                actual_delivery="0.1",
+                                extras_runs=1,
+                                extras={"wides": 1},
+                            )
+                        ],
+                    )
+                ],
             )
         ]
     )
@@ -208,7 +240,9 @@ def test_parser_rejects_malformed_wickets_and_extras():
 
 
 def test_parser_rejects_invalid_batting_team_and_target_overs():
-    raw = cricsheet_match([innings("Gamma", [over(0, [delivery(actual_delivery="0.1")])])])
+    raw = cricsheet_match(
+        [innings("Gamma", [over(0, [delivery(actual_delivery="0.1")])])]
+    )
     with pytest.raises(ParseError, match="not in info.teams"):
         parse_cricsheet_dict(raw, source_match_id="bad-team")
 
@@ -227,7 +261,9 @@ def test_parser_rejects_invalid_batting_team_and_target_overs():
 
 
 def test_parser_rejects_empty_over():
-    raw = cricsheet_match([innings("Alpha", [over(0, [delivery(actual_delivery="0.1")])])])
+    raw = cricsheet_match(
+        [innings("Alpha", [over(0, [delivery(actual_delivery="0.1")])])]
+    )
     raw["innings"][0]["overs"][0]["deliveries"] = []
     with pytest.raises(ParseError, match="no deliveries"):
         parse_cricsheet_dict(raw, source_match_id="empty-over")

@@ -140,10 +140,12 @@ def _wrap(
         fitted_split="train",
         validation_role="diagnostic_only",
         notes=(
-            "Fitted only on chronological train matches. "
-            "Validation is diagnostic only and is not used for model selection. "
-            "Test data is never used during fitting. "
-            "Terminal and inactive states are excluded.",
+            (
+                "Fitted only on chronological train matches. "
+                "Validation is diagnostic only and is not used for model selection. "
+                "Test data is never used during fitting. "
+                "Terminal and inactive states are excluded."
+            ),
         ),
     )
     artifact = ModelArtifact(estimator=estimator, metadata=metadata)

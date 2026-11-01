@@ -11,7 +11,10 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from app.services.ml.dataset_builder import build_training_dataset, load_matches_from_dir
+from app.services.ml.dataset_builder import (
+    build_training_dataset,
+    load_matches_from_dir,
+)
 from app.services.ml.evaluate import write_calibration_plot
 from app.services.ml.model_registry import save_model
 from app.services.ml.train import fit_baseline_models
@@ -51,26 +54,42 @@ def main() -> None:
         metrics["models"][name] = {
             "artifact": str(artifact_path),
             "metadata": result.artifact.metadata.model_dump(),
-            "reports": {split: report.model_dump() for split, report in result.report.items()},
+            "reports": {
+                split: report.model_dump() for split, report in result.report.items()
+            },
         }
         test_examples = dataset.examples_for("test")
         if test_examples:
             write_calibration_plot(
                 [example.label for example in test_examples],
-                [float(result.artifact.predict_proba(example.features)) for example in test_examples],
+                [
+                    float(result.artifact.predict_proba(example.features))
+                    for example in test_examples
+                ],
                 output / f"{name}_test_calibration.png",
                 title=f"{name} test calibration (not a production evaluation)",
             )
 
     metrics_path = output / "metrics.json"
     metrics_path.write_text(json.dumps(metrics, indent=2), encoding="utf-8")
-    print(json.dumps({"metrics": str(metrics_path), **{k: metrics[k] for k in (
-        "evaluation_is_meaningful",
-        "evaluation_limitation",
-        "train_match_ids",
-        "validation_match_ids",
-        "test_match_ids",
-    )}}, indent=2))
+    print(
+        json.dumps(
+            {
+                "metrics": str(metrics_path),
+                **{
+                    k: metrics[k]
+                    for k in (
+                        "evaluation_is_meaningful",
+                        "evaluation_limitation",
+                        "train_match_ids",
+                        "validation_match_ids",
+                        "test_match_ids",
+                    )
+                },
+            },
+            indent=2,
+        )
+    )
     for name, payload in metrics["models"].items():
         reports = payload["reports"]
         print(f"\n{name}")

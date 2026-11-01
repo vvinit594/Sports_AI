@@ -71,7 +71,9 @@ class MatchStateEngine:
 
             if not innings.deliveries:
                 reason = self._empty_innings_reason(innings)
-                current = self._mark_innings_complete(current, innings, reason, just_completed=True)
+                current = self._mark_innings_complete(
+                    current, innings, reason, just_completed=True
+                )
                 current = self._apply_post_innings_knowledge(current, innings)
                 current = self._maybe_complete_match(
                     current,
@@ -137,7 +139,9 @@ class MatchStateEngine:
                         )
                     current = self._apply_post_innings_knowledge(current, innings)
                     if innings.innings_number == len(self.match.innings):
-                        current = current.model_copy(update={"source_record_complete": True})
+                        current = current.model_copy(
+                            update={"source_record_complete": True}
+                        )
 
                 states.append(current)
 
@@ -290,7 +294,9 @@ class MatchStateEngine:
             return InningsCompletionReason.OVERS_EXHAUSTED
         return None
 
-    def _empty_innings_reason(self, innings: NormalizedInnings) -> InningsCompletionReason:
+    def _empty_innings_reason(
+        self, innings: NormalizedInnings
+    ) -> InningsCompletionReason:
         if innings.forfeited:
             return InningsCompletionReason.FORFEITED
         if innings.declared:
@@ -375,7 +381,9 @@ class MatchStateEngine:
             if state.terminal_innings_runs is not None
             else state.innings_runs_at_delivery
         )
-        cricket_remaining = None if state.target is None else state.target - terminal_runs
+        cricket_remaining = (
+            None if state.target is None else state.target - terminal_runs
+        )
         return state.model_copy(
             update={
                 "innings_runs": innings_runs,
@@ -418,7 +426,9 @@ class MatchStateEngine:
                 and previous.batting_team != innings.batting_team
                 and previous.innings_number in completed_totals
             ):
-                return completed_totals[previous.innings_number] + 1, TargetSource.DERIVED_PREVIOUS_INNINGS
+                return completed_totals[
+                    previous.innings_number
+                ] + 1, TargetSource.DERIVED_PREVIOUS_INNINGS
 
         return None, TargetSource.NONE
 
@@ -459,14 +469,18 @@ class MatchStateEngine:
         target_source: TargetSource,
         scheduled_balls: int | None,
     ) -> MatchState:
-        balls_remaining = None if scheduled_balls is None else max(0, scheduled_balls - legal_balls)
+        balls_remaining = (
+            None if scheduled_balls is None else max(0, scheduled_balls - legal_balls)
+        )
         runs_remaining = None if target is None else target - innings_runs
         max_wickets = max_wickets_available(len(innings.absent_hurt))
         return MatchState(
             source_match_id=self.match.source_match_id,
             sequence=sequence,
             innings_number=innings.innings_number,
-            innings_phase=InningsPhase.SUPER_OVER if innings.is_super_over else InningsPhase.REGULATION,
+            innings_phase=InningsPhase.SUPER_OVER
+            if innings.is_super_over
+            else InningsPhase.REGULATION,
             is_super_over=innings.is_super_over,
             batting_team=innings.batting_team,
             bowling_team=innings.bowling_team,

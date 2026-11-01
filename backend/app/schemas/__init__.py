@@ -4,4 +4,4 @@ from app.schemas.match import NormalizedMatch
 from app.schemas.state import MatchState
 from app.schemas.validation import ValidationReport
 
-__all__ = ["NormalizedMatch", "MatchState", "ValidationReport"]
+__all__ = ["MatchState", "NormalizedMatch", "ValidationReport"]

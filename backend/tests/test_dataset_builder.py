@@ -38,7 +38,9 @@ def test_invalid_outcomes_are_excluded():
         ({"winner": "Beta", "method": "D/L", "by": {"wickets": 3}}, "method:D/L"),
         ({"winner": "Beta", "by": {"wickets": 2}}, "super_over_present"),
     ]
-    first = innings("Alpha", [over(0, [delivery(actual_delivery="0.1", batter_runs=1)])])
+    first = innings(
+        "Alpha", [over(0, [delivery(actual_delivery="0.1", batter_runs=1)])]
+    )
     chase = innings(
         "Beta",
         [over(0, [delivery(actual_delivery="0.1", batter_runs=1)])],
@@ -54,7 +56,9 @@ def test_invalid_outcomes_are_excluded():
         if expected == "super_over_present":
             innings_list.append(super_over)
         match = parse_cricsheet_dict(
-            cricsheet_match(innings_list, outcome=outcome, overs=2, dates=["2024-01-01"]),
+            cricsheet_match(
+                innings_list, outcome=outcome, overs=2, dates=["2024-01-01"]
+            ),
             source_match_id=expected,
         )
         assert chase_win_label(match) == (None, expected)
@@ -91,7 +95,10 @@ def test_match_level_split_has_no_delivery_leakage():
             first_innings_runs=[1, 1, 1, 1, 1, 1],
             chase_runs=[1, 1, 1, 4] if winner == "Beta" else [0] * 12,
             winner=winner,
-            outcome={"winner": winner, "by": {"wickets": 3} if winner == "Beta" else {"runs": 6}},
+            outcome={
+                "winner": winner,
+                "by": {"wickets": 3} if winner == "Beta" else {"runs": 6},
+            },
         )
         matches.append(match)
 
@@ -134,7 +141,9 @@ def test_no_result_match_adds_zero_examples():
     assert dataset.audit.abandoned_or_no_result == 1
 
 
-def _minimal_chase(outcome, *, match_id: str, match_type: str = "T20", extra_innings=None):
+def _minimal_chase(
+    outcome, *, match_id: str, match_type: str = "T20", extra_innings=None
+):
     innings_list = [
         innings("Alpha", [over(0, [delivery(actual_delivery="0.1", batter_runs=1)])]),
         innings(
@@ -158,7 +167,11 @@ def _minimal_chase(outcome, *, match_id: str, match_type: str = "T20", extra_inn
 def test_audit_categories_are_mutually_exclusive():
     first_only = parse_cricsheet_dict(
         cricsheet_match(
-            [innings("Alpha", [over(0, [delivery(actual_delivery="0.1", batter_runs=1)])])],
+            [
+                innings(
+                    "Alpha", [over(0, [delivery(actual_delivery="0.1", batter_runs=1)])]
+                )
+            ],
             outcome={"winner": "Alpha", "by": {"runs": 1}},
             overs=2,
             dates=["2024-01-01"],
@@ -168,8 +181,12 @@ def test_audit_categories_are_mutually_exclusive():
     no_target = parse_cricsheet_dict(
         cricsheet_match(
             [
-                innings("Alpha", [over(0, [delivery(actual_delivery="0.1", batter_runs=1)])]),
-                innings("Beta", [over(0, [delivery(actual_delivery="0.1", batter_runs=1)])]),
+                innings(
+                    "Alpha", [over(0, [delivery(actual_delivery="0.1", batter_runs=1)])]
+                ),
+                innings(
+                    "Beta", [over(0, [delivery(actual_delivery="0.1", batter_runs=1)])]
+                ),
             ],
             outcome={"winner": "Beta", "by": {"wickets": 2}},
             overs=2,
@@ -180,7 +197,9 @@ def test_audit_categories_are_mutually_exclusive():
     matches = [
         _minimal_chase({"result": "no result"}, match_id="nr"),
         _minimal_chase({"result": "tie", "eliminator": "Alpha"}, match_id="tie"),
-        _minimal_chase({"winner": "Beta", "method": "D/L", "by": {"wickets": 1}}, match_id="dl"),
+        _minimal_chase(
+            {"winner": "Beta", "method": "D/L", "by": {"wickets": 1}}, match_id="dl"
+        ),
         _minimal_chase(
             {"winner": "Beta", "by": {"wickets": 1}},
             match_id="so",
@@ -194,7 +213,9 @@ def test_audit_categories_are_mutually_exclusive():
         ),
         _minimal_chase({"winner": "Gamma", "by": {"runs": 1}}, match_id="bad-winner"),
         _minimal_chase({"result": "draw"}, match_id="draw"),
-        _minimal_chase({"winner": "Beta", "by": {"wickets": 1}}, match_id="odi", match_type="ODI"),
+        _minimal_chase(
+            {"winner": "Beta", "by": {"wickets": 1}}, match_id="odi", match_type="ODI"
+        ),
         first_only,
         no_target,
     ]

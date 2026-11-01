@@ -3,9 +3,18 @@ from pathlib import Path
 from app.core.exceptions import InferenceError
 from app.services.ml.dataset_builder import build_training_dataset
 from app.services.ml.evaluate import evaluate_binary_probabilities
-from app.services.ml.features import FEATURE_NAMES, FEATURE_SCHEMA_VERSION, is_chase_training_state
+from app.services.ml.features import (
+    FEATURE_NAMES,
+    FEATURE_SCHEMA_VERSION,
+    is_chase_training_state,
+)
 from app.services.ml.inference import predict_batch, predict_one
-from app.services.ml.model_registry import ModelArtifact, ModelMetadata, load_model, save_model
+from app.services.ml.model_registry import (
+    ModelArtifact,
+    ModelMetadata,
+    load_model,
+    save_model,
+)
 from app.services.ml.train import fit_baseline_models
 from tests.ml_helpers import two_innings_chase
 
@@ -40,7 +49,10 @@ def _labeled_matches():
             first_innings_runs=[1, 1, 1, 1, 1, 1],
             chase_runs=[1, 1, 1, 4] if winner == "Beta" else [0] * 12,
             winner=winner,
-            outcome={"winner": winner, "by": {"wickets": 3} if winner == "Beta" else {"runs": 6}},
+            outcome={
+                "winner": winner,
+                "by": {"wickets": 3} if winner == "Beta" else {"runs": 6},
+            },
         )
         matches.append(match)
     return matches
@@ -69,7 +81,9 @@ def test_inference_refuses_terminal_and_first_innings_states():
         winner="Beta",
     )
     artifact = _heuristic_artifact()
-    first = next(state for state in states if state.innings_number == 1 and state.last_delivery)
+    first = next(
+        state for state in states if state.innings_number == 1 and state.last_delivery
+    )
     finished = next(state for state in states if state.innings_complete)
     try:
         predict_one(artifact, first, states, match=match)
@@ -115,7 +129,9 @@ def test_model_persistence_round_trip(tmp_path: Path):
         winner="Beta",
     )
     chase = next(state for state in states if is_chase_training_state(state))
-    original = predict_one(trained["logistic_regression"].artifact, chase, states, match=match)
+    original = predict_one(
+        trained["logistic_regression"].artifact, chase, states, match=match
+    )
     restored = predict_one(loaded, chase, states, match=match)
     assert original.probability == restored.probability
     assert loaded.metadata.feature_schema_version == FEATURE_SCHEMA_VERSION

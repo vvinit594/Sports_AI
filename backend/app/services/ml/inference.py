@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from collections.abc import Sequence
 
 from pydantic import BaseModel, ConfigDict, field_validator
@@ -30,7 +31,7 @@ class ProbabilityPrediction(BaseModel):
     @field_validator("probability")
     @classmethod
     def _bounded(cls, value: float) -> float:
-        if value != value or value < 0.0 or value > 1.0:
+        if not math.isfinite(value) or value < 0.0 or value > 1.0:
             raise ValueError("probability must be a finite value in [0, 1]")
         return float(value)
 
@@ -115,7 +116,7 @@ def _refuse_invalid_state(state: MatchState) -> None:
 
 
 def _validated_probability(value: float) -> float:
-    if value != value:
+    if not math.isfinite(value):
         raise InferenceError("model returned a non-finite probability")
     if value < 0.0 or value > 1.0:
         raise InferenceError(f"model returned probability outside [0, 1]: {value}")

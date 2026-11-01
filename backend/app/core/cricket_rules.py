@@ -6,6 +6,8 @@ documented cricket rules to values that already exist in a match record.
 
 from __future__ import annotations
 
+import math
+
 from app.core.constants import (
     DEFAULT_BALLS_PER_OVER,
     DEFAULT_T20_OVERS,
@@ -40,20 +42,20 @@ def counts_as_wicket(kind: str | None) -> bool:
     if kind is None:
         return True
     normalized = kind.strip().lower()
-    if normalized in NON_COUNTING_DISMISSALS:
-        return False
-    return True
+    return normalized not in NON_COUNTING_DISMISSALS
 
 
 def is_known_dismissal_kind(kind: str | None) -> bool:
     if kind is None:
         return False
     normalized = kind.strip().lower()
-    return normalized in KNOWN_COUNTING_DISMISSALS or normalized in NON_COUNTING_DISMISSALS
+    return (
+        normalized in KNOWN_COUNTING_DISMISSALS or normalized in NON_COUNTING_DISMISSALS
+    )
 
 
 def overs_notation_to_balls(
-    value: int | float | str | None,
+    value: float | str | None,
     balls_per_over: int = DEFAULT_BALLS_PER_OVER,
 ) -> int | None:
     """Convert cricket overs notation to legal balls.
@@ -78,7 +80,12 @@ def overs_notation_to_balls(
 
     if "." in text:
         overs_text, balls_text = text.split(".", 1)
-        if not overs_text or not balls_text or not _is_int_token(overs_text) or not _is_int_token(balls_text):
+        if (
+            not overs_text
+            or not balls_text
+            or not _is_int_token(overs_text)
+            or not _is_int_token(balls_text)
+        ):
             raise ValueError(f"malformed overs notation: {value!r}")
         overs = int(overs_text)
         balls = int(balls_text)
@@ -99,14 +106,14 @@ def overs_notation_to_balls(
     return overs * balls_per_over
 
 
-def _overs_notation_text(value: int | float | str) -> str | None:
+def _overs_notation_text(value: float | str) -> str | None:
     if isinstance(value, str):
         text = value.strip()
         return text or None
     if isinstance(value, int):
         return str(value)
     if isinstance(value, float):
-        if value != value:  # NaN
+        if math.isnan(value):
             raise ValueError(f"malformed overs notation: {value!r}")
         return format(value, ".10f").rstrip("0").rstrip(".")
     raise ValueError(f"malformed overs notation: {value!r}")
@@ -188,7 +195,7 @@ def max_wickets_available(absent_hurt_count: int = 0) -> int:
 
 def scheduled_balls_for_innings(
     *,
-    target_overs: int | float | str | None,
+    target_overs: float | str | None,
     is_super_over: bool,
     match_overs: int | None,
     match_type: str | None,

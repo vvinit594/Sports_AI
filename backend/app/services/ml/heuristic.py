@@ -24,7 +24,9 @@ RESOURCE_CENTER = 0.5
 def heuristic_chase_win_probability(features: FeatureVector) -> float:
     values = features.values
     if values.get("is_chase", 0.0) < 0.5:
-        raise InferenceError("heuristic chase probability is defined only for chase states")
+        raise InferenceError(
+            "heuristic chase probability is defined only for chase states"
+        )
     if values.get("missing_target", 0.0) >= 0.5:
         raise InferenceError("heuristic chase probability requires a known target")
 

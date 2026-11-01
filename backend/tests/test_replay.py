@@ -1,8 +1,9 @@
+import pytest
+
 from app.core.exceptions import ReplayError
 from app.services.ingestion import parse_cricsheet_dict
 from app.services.replay import ReplayEngine
 from tests.helpers import cricsheet_match, delivery, innings, over
-import pytest
 
 
 def _replay() -> ReplayEngine:
@@ -30,7 +31,9 @@ def _replay() -> ReplayEngine:
 def test_replay_is_deterministic():
     first = _replay().play_all()
     second = _replay().play_all()
-    assert [state.model_dump() for state in first] == [state.model_dump() for state in second]
+    assert [state.model_dump() for state in first] == [
+        state.model_dump() for state in second
+    ]
     assert first[-1].innings_runs == 5
     assert first[-1].legal_balls == 3
 

@@ -9,7 +9,11 @@ import joblib
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.core.exceptions import ModelRegistryError
-from app.services.ml.features import FEATURE_NAMES, FEATURE_SCHEMA_VERSION, FeatureVector
+from app.services.ml.features import (
+    FEATURE_NAMES,
+    FEATURE_SCHEMA_VERSION,
+    FeatureVector,
+)
 from app.services.ml.heuristic import heuristic_chase_win_probability
 
 
@@ -78,7 +82,7 @@ def load_model(path: str | Path) -> ModelArtifact:
         raise ModelRegistryError(f"model file not found: {source}")
     try:
         payload = joblib.load(source)
-    except Exception as exc:  # noqa: BLE001 - joblib may raise many types
+    except Exception as exc:
         raise ModelRegistryError(f"unable to load model {source}: {exc}") from exc
     if not isinstance(payload, dict) or "metadata" not in payload:
         raise ModelRegistryError(f"{source} is not a PulseIQ model artifact")
@@ -89,7 +93,9 @@ def load_model(path: str | Path) -> ModelArtifact:
             f"{FEATURE_SCHEMA_VERSION}"
         )
     if tuple(metadata.feature_names) != FEATURE_NAMES:
-        raise ModelRegistryError("artifact feature names do not match the current schema")
+        raise ModelRegistryError(
+            "artifact feature names do not match the current schema"
+        )
     return ModelArtifact(estimator=payload.get("estimator"), metadata=metadata)
 
 

@@ -5,7 +5,11 @@ from __future__ import annotations
 import pytest
 
 from app.core.exceptions import ParseError
-from app.schemas.enums import InningsCompletionReason, KnowledgeHorizon, MatchCompletionReason
+from app.schemas.enums import (
+    InningsCompletionReason,
+    KnowledgeHorizon,
+    MatchCompletionReason,
+)
 from app.services.ingestion import parse_cricsheet_dict
 from app.services.match_engine import MatchStateEngine
 from tests.helpers import cricsheet_match, delivery, innings, over
@@ -19,7 +23,9 @@ def _states(raw, match_id="audit"):
 def test_terminal_score_is_frozen_while_source_totals_continue():
     raw = cricsheet_match(
         [
-            innings("Alpha", [over(0, [delivery(actual_delivery="0.1", batter_runs=6)])]),
+            innings(
+                "Alpha", [over(0, [delivery(actual_delivery="0.1", batter_runs=6)])]
+            ),
             innings(
                 "Beta",
                 [
@@ -37,7 +43,9 @@ def test_terminal_score_is_frozen_while_source_totals_continue():
         ]
     )
     _, states = _states(raw, "terminal-snapshot")
-    chase = [state for state in states if state.innings_number == 2 and state.last_delivery]
+    chase = [
+        state for state in states if state.innings_number == 2 and state.last_delivery
+    ]
     winning = next(state for state in chase if state.innings_just_completed)
     later = [state for state in chase if state.source_delivery_after_terminal]
     final = chase[-1]
@@ -57,7 +65,9 @@ def test_terminal_score_is_frozen_while_source_totals_continue():
 def test_post_penalty_does_not_reclassify_a_completed_or_failed_chase():
     raw = cricsheet_match(
         [
-            innings("Alpha", [over(0, [delivery(actual_delivery="0.1", batter_runs=6)])]),
+            innings(
+                "Alpha", [over(0, [delivery(actual_delivery="0.1", batter_runs=6)])]
+            ),
             innings(
                 "Beta",
                 [over(0, [delivery(actual_delivery="0.1", batter_runs=2)])],
@@ -115,7 +125,9 @@ def test_forfeit_completes_innings_not_always_the_match():
     )
     _, states = _states(raw, "forfeit-first")
     forfeited = [state for state in states if state.innings_number == 1][-1]
-    chase = [state for state in states if state.innings_number == 2 and state.last_delivery][-1]
+    chase = [
+        state for state in states if state.innings_number == 2 and state.last_delivery
+    ][-1]
     assert forfeited.innings_completion_reason == InningsCompletionReason.FORFEITED
     assert forfeited.innings_complete is True
     assert forfeited.match_complete is False
@@ -131,7 +143,9 @@ def test_forfeit_completes_innings_not_always_the_match():
 
 
 def test_fractional_integers_are_rejected():
-    raw = cricsheet_match([innings("Alpha", [over(0, [delivery(actual_delivery="0.1")])])])
+    raw = cricsheet_match(
+        [innings("Alpha", [over(0, [delivery(actual_delivery="0.1")])])]
+    )
     raw["innings"][0]["overs"][0]["deliveries"][0]["runs"] = {
         "batter": 1.5,
         "extras": 0,
@@ -144,7 +158,18 @@ def test_fractional_integers_are_rejected():
         [
             innings(
                 "Alpha",
-                [over(0, [delivery(actual_delivery="0.1", extras_runs=1, extras={"wides": 1})])],
+                [
+                    over(
+                        0,
+                        [
+                            delivery(
+                                actual_delivery="0.1",
+                                extras_runs=1,
+                                extras={"wides": 1},
+                            )
+                        ],
+                    )
+                ],
             )
         ]
     )
@@ -152,14 +177,18 @@ def test_fractional_integers_are_rejected():
     with pytest.raises(ParseError, match="must be an integer"):
         parse_cricsheet_dict(raw, source_match_id="frac-extra")
 
-    raw = cricsheet_match([innings("Alpha", [over(0, [delivery(actual_delivery="0.1")])])])
+    raw = cricsheet_match(
+        [innings("Alpha", [over(0, [delivery(actual_delivery="0.1")])])]
+    )
     raw["meta"]["revision"] = 1.5
     with pytest.raises(ParseError, match="must be an integer"):
         parse_cricsheet_dict(raw, source_match_id="frac-revision")
 
 
 def test_whole_float_integers_are_accepted():
-    raw = cricsheet_match([innings("Alpha", [over(0, [delivery(actual_delivery="0.1", batter_runs=1)])])])
+    raw = cricsheet_match(
+        [innings("Alpha", [over(0, [delivery(actual_delivery="0.1", batter_runs=1)])])]
+    )
     raw["innings"][0]["overs"][0]["deliveries"][0]["runs"] = {
         "batter": 1.0,
         "extras": 0.0,
@@ -178,7 +207,11 @@ def test_actual_delivery_allows_wides_and_miscounts_but_rejects_over_mismatch():
                     over(
                         0,
                         [
-                            delivery(actual_delivery="0.1", extras_runs=1, extras={"wides": 1}),
+                            delivery(
+                                actual_delivery="0.1",
+                                extras_runs=1,
+                                extras={"wides": 1},
+                            ),
                             delivery(actual_delivery="0.1", batter_runs=0),
                         ],
                     ),

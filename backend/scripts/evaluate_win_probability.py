@@ -10,8 +10,14 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from app.services.ml.dataset_builder import build_training_dataset, load_matches_from_dir
-from app.services.ml.evaluate import evaluate_binary_probabilities, write_calibration_plot
+from app.services.ml.dataset_builder import (
+    build_training_dataset,
+    load_matches_from_dir,
+)
+from app.services.ml.evaluate import (
+    evaluate_binary_probabilities,
+    write_calibration_plot,
+)
 from app.services.ml.model_registry import load_model
 
 
@@ -22,7 +28,9 @@ def main() -> None:
         "--input",
         default=str(ROOT.parent / "data" / "raw" / "cricsheet" / "samples"),
     )
-    parser.add_argument("--split", default="test", choices=("train", "validation", "test"))
+    parser.add_argument(
+        "--split", default="test", choices=("train", "validation", "test")
+    )
     parser.add_argument("--plot", default="", help="Optional calibration PNG path")
     args = parser.parse_args()
 
@@ -34,7 +42,8 @@ def main() -> None:
         [example.label for example in examples],
         proba,
         match_ids=[example.source_match_id for example in examples],
-        evaluation_is_meaningful=dataset.evaluation_is_meaningful and args.split == "test",
+        evaluation_is_meaningful=dataset.evaluation_is_meaningful
+        and args.split == "test",
     )
     print(report.model_dump_json(indent=2))
     if args.plot:

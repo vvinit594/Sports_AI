@@ -259,7 +259,7 @@ def build_training_dataset(
     audit = audit_matches(matches)
     labeled: list[tuple[NormalizedMatch, int, list[MatchState]]] = []
     for match in matches:
-        label, reason = chase_win_label(match)
+        label, _reason = chase_win_label(match)
         if label is None:
             continue
         states = MatchStateEngine(match).reconstruct()
@@ -270,11 +270,7 @@ def build_training_dataset(
         train_fraction=train_fraction,
         validation_fraction=validation_fraction,
     )
-    split_lookup = {
-        match_id: name
-        for name, ids in split.items()
-        for match_id in ids
-    }
+    split_lookup = {match_id: name for name, ids in split.items() for match_id in ids}
 
     examples: list[TrainingExample] = []
     for match, label, states in labeled:
@@ -382,7 +378,10 @@ def _evaluation_quality(
 ) -> tuple[bool, str | None]:
     n_usable = len(labeled)
     n_test = len(split["test"])
-    if n_usable < MIN_MATCHES_FOR_MEANINGFUL_EVAL or n_test < MIN_TEST_MATCHES_FOR_MEANINGFUL_EVAL:
+    if (
+        n_usable < MIN_MATCHES_FOR_MEANINGFUL_EVAL
+        or n_test < MIN_TEST_MATCHES_FOR_MEANINGFUL_EVAL
+    ):
         return (
             False,
             (

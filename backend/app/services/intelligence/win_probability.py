@@ -23,7 +23,9 @@ def win_probabilities_for_match(
     *,
     states: Sequence[MatchState] | None = None,
 ) -> list[ProbabilityPrediction]:
-    reconstructed = list(states) if states is not None else MatchStateEngine(match).reconstruct()
+    reconstructed = (
+        list(states) if states is not None else MatchStateEngine(match).reconstruct()
+    )
     predictions: list[ProbabilityPrediction] = []
     for state in eligible_chase_states(reconstructed):
         predictions.append(

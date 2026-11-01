@@ -66,11 +66,15 @@ def main() -> int:
             }
         )
         status = "OK" if report.ok else "FAIL"
-        print(f"{status} {file_path.name} deliveries={len(match.deliveries)} errors={len(report.errors)}")
+        print(
+            f"{status} {file_path.name} deliveries={len(match.deliveries)} errors={len(report.errors)}"
+        )
         if not report.ok:
             failures += 1
 
-    (args.output / "summary.json").write_text(json.dumps(summary, indent=2), encoding="utf-8")
+    (args.output / "summary.json").write_text(
+        json.dumps(summary, indent=2), encoding="utf-8"
+    )
     print(f"Processed {len(files)} matches, {failures} failed validation")
     return 1 if failures else 0
 

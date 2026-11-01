@@ -1,4 +1,6 @@
 from app.core.exceptions import FeatureError
+from app.services.ingestion import parse_cricsheet_dict
+from app.services.match_engine import MatchStateEngine
 from app.services.ml.features import (
     FEATURE_NAMES,
     extract_feature_vector,
@@ -7,8 +9,6 @@ from app.services.ml.features import (
 )
 from tests.helpers import cricsheet_match, delivery, innings, over
 from tests.ml_helpers import two_innings_chase
-from app.services.ingestion import parse_cricsheet_dict
-from app.services.match_engine import MatchStateEngine
 
 
 def test_chase_features_use_only_information_at_current_ball():
@@ -25,7 +25,9 @@ def test_chase_features_use_only_information_at_current_ball():
         if is_chase_training_state(state) and state.last_delivery is not None
     ]
     third_single = [state for state in chase if state.last_delivery.batter_runs == 1][2]
-    features = extract_feature_vector(third_single, states, match=match, balls_per_over=6)
+    features = extract_feature_vector(
+        third_single, states, match=match, balls_per_over=6
+    )
     assert features.values["runs_last_6"] == 3.0
     assert features.values["boundaries_last_6"] == 0.0
     assert features.values["current_score"] == 3.0
@@ -67,7 +69,9 @@ def test_missing_target_on_first_innings_is_explicit():
     first = next(
         state
         for state in states
-        if state.innings_number == 1 and is_active_feature_state(state) and state.last_delivery
+        if state.innings_number == 1
+        and is_active_feature_state(state)
+        and state.last_delivery
     )
     features = extract_feature_vector(first, states, match=match)
     assert features.values["missing_target"] == 1.0
@@ -85,7 +89,9 @@ def test_terminal_states_are_not_active_feature_states():
         chase_runs=[1, 1, 1, 4],
         winner="Beta",
     )
-    terminal = [state for state in states if state.innings_complete or state.match_complete]
+    terminal = [
+        state for state in states if state.innings_complete or state.match_complete
+    ]
     assert terminal
     assert all(not is_chase_training_state(state) for state in terminal)
     active = [state for state in states if is_chase_training_state(state)]
@@ -113,7 +119,9 @@ def test_extract_rejects_inactive_states():
 def test_non_boundary_four_is_not_counted_from_delivery_applied():
     raw = cricsheet_match(
         [
-            innings("Alpha", [over(0, [delivery(actual_delivery="0.1", batter_runs=1)])]),
+            innings(
+                "Alpha", [over(0, [delivery(actual_delivery="0.1", batter_runs=1)])]
+            ),
             innings(
                 "Beta",
                 [
@@ -121,7 +129,9 @@ def test_non_boundary_four_is_not_counted_from_delivery_applied():
                         0,
                         [
                             delivery(actual_delivery="0.1", batter_runs=1),
-                            delivery(actual_delivery="0.2", batter_runs=4, non_boundary=True),
+                            delivery(
+                                actual_delivery="0.2", batter_runs=4, non_boundary=True
+                            ),
                             delivery(actual_delivery="0.3", batter_runs=0),
                             delivery(actual_delivery="0.4", batter_runs=0),
                         ],
@@ -135,9 +145,15 @@ def test_non_boundary_four_is_not_counted_from_delivery_applied():
     )
     match = parse_cricsheet_dict(raw, source_match_id="non-boundary")
     states = MatchStateEngine(match).reconstruct()
-    chase = [state for state in states if is_chase_training_state(state) and state.last_delivery]
+    chase = [
+        state
+        for state in states
+        if is_chase_training_state(state) and state.last_delivery
+    ]
     after_four = next(
-        state for state in chase if state.last_delivery and state.last_delivery.batter_runs == 4
+        state
+        for state in chase
+        if state.last_delivery and state.last_delivery.batter_runs == 4
     )
     assert after_four.last_delivery is not None
     assert after_four.last_delivery.non_boundary is True
@@ -148,7 +164,9 @@ def test_non_boundary_four_is_not_counted_from_delivery_applied():
 def test_source_four_without_non_boundary_flag_counts_as_boundary():
     raw = cricsheet_match(
         [
-            innings("Alpha", [over(0, [delivery(actual_delivery="0.1", batter_runs=1)])]),
+            innings(
+                "Alpha", [over(0, [delivery(actual_delivery="0.1", batter_runs=1)])]
+            ),
             innings(
                 "Beta",
                 [

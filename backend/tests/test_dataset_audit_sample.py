@@ -1,8 +1,14 @@
 from pathlib import Path
 
-from app.services.ml.dataset_builder import audit_matches, build_training_dataset, load_matches_from_dir
+from app.services.ml.dataset_builder import (
+    audit_matches,
+    build_training_dataset,
+    load_matches_from_dir,
+)
 
-SAMPLE_DIR = Path(__file__).resolve().parents[2] / "data" / "raw" / "cricsheet" / "samples"
+SAMPLE_DIR = (
+    Path(__file__).resolve().parents[2] / "data" / "raw" / "cricsheet" / "samples"
+)
 
 
 def test_official_sample_audit_counts():
@@ -40,7 +46,10 @@ def test_official_sample_split_is_not_a_meaningful_evaluation():
     dataset = build_training_dataset(load_matches_from_dir(SAMPLE_DIR))
     assert dataset.evaluation_is_meaningful is False
     assert dataset.evaluation_limitation is not None
-    assert len(dataset.train_match_ids) + len(dataset.validation_match_ids) + len(
-        dataset.test_match_ids
-    ) == 11
+    assert (
+        len(dataset.train_match_ids)
+        + len(dataset.validation_match_ids)
+        + len(dataset.test_match_ids)
+        == 11
+    )
     assert set(dataset.train_match_ids).isdisjoint(dataset.test_match_ids)

@@ -182,7 +182,9 @@ def _match_level_evaluation(
 ) -> MatchLevelEvaluation:
     grouped_labels: dict[str, list[int]] = defaultdict(list)
     grouped_proba: dict[str, list[float]] = defaultdict(list)
-    for match_id, label, probability in zip(match_ids, labels.tolist(), proba.tolist(), strict=True):
+    for match_id, label, probability in zip(
+        match_ids, labels.tolist(), proba.tolist(), strict=True
+    ):
         grouped_labels[match_id].append(int(label))
         grouped_proba[match_id].append(float(probability))
 

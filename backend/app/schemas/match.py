@@ -198,7 +198,9 @@ class NormalizedMatch(FrozenModel):
 
     @property
     def deliveries(self) -> tuple[NormalizedDelivery, ...]:
-        return tuple(delivery for innings in self.innings for delivery in innings.deliveries)
+        return tuple(
+            delivery for innings in self.innings for delivery in innings.deliveries
+        )
 
     def innings_by_number(self, innings_number: int) -> NormalizedInnings:
         for innings in self.innings:
