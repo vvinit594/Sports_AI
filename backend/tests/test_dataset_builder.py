@@ -1,8 +1,10 @@
 from app.services.ingestion import parse_cricsheet_dict
 from app.services.ml.dataset_builder import (
+    audit_matches,
     build_training_dataset,
     chase_win_label,
     chronological_match_split,
+    exclusion_category,
 )
 from app.services.ml.features import is_chase_training_state
 from tests.helpers import cricsheet_match, delivery, innings, over
@@ -130,3 +132,90 @@ def test_no_result_match_adds_zero_examples():
     dataset = build_training_dataset([match])
     assert dataset.examples == ()
     assert dataset.audit.abandoned_or_no_result == 1
+
+
+def _minimal_chase(outcome, *, match_id: str, match_type: str = "T20", extra_innings=None):
+    innings_list = [
+        innings("Alpha", [over(0, [delivery(actual_delivery="0.1", batter_runs=1)])]),
+        innings(
+            "Beta",
+            [over(0, [delivery(actual_delivery="0.1", batter_runs=1)])],
+            target={"runs": 10, "overs": 2},
+        ),
+    ]
+    if extra_innings:
+        innings_list.extend(extra_innings)
+    raw = cricsheet_match(
+        innings_list,
+        outcome=outcome,
+        overs=2,
+        dates=["2024-01-01"],
+        match_type=match_type,
+    )
+    return parse_cricsheet_dict(raw, source_match_id=match_id)
+
+
+def test_audit_categories_are_mutually_exclusive():
+    first_only = parse_cricsheet_dict(
+        cricsheet_match(
+            [innings("Alpha", [over(0, [delivery(actual_delivery="0.1", batter_runs=1)])])],
+            outcome={"winner": "Alpha", "by": {"runs": 1}},
+            overs=2,
+            dates=["2024-01-01"],
+        ),
+        source_match_id="no-chase",
+    )
+    no_target = parse_cricsheet_dict(
+        cricsheet_match(
+            [
+                innings("Alpha", [over(0, [delivery(actual_delivery="0.1", batter_runs=1)])]),
+                innings("Beta", [over(0, [delivery(actual_delivery="0.1", batter_runs=1)])]),
+            ],
+            outcome={"winner": "Beta", "by": {"wickets": 2}},
+            overs=2,
+            dates=["2024-01-01"],
+        ),
+        source_match_id="no-target",
+    )
+    matches = [
+        _minimal_chase({"result": "no result"}, match_id="nr"),
+        _minimal_chase({"result": "tie", "eliminator": "Alpha"}, match_id="tie"),
+        _minimal_chase({"winner": "Beta", "method": "D/L", "by": {"wickets": 1}}, match_id="dl"),
+        _minimal_chase(
+            {"winner": "Beta", "by": {"wickets": 1}},
+            match_id="so",
+            extra_innings=[
+                innings(
+                    "Alpha",
+                    [over(0, [delivery(actual_delivery="0.1", batter_runs=1)])],
+                    super_over=True,
+                )
+            ],
+        ),
+        _minimal_chase({"winner": "Gamma", "by": {"runs": 1}}, match_id="bad-winner"),
+        _minimal_chase({"result": "draw"}, match_id="draw"),
+        _minimal_chase({"winner": "Beta", "by": {"wickets": 1}}, match_id="odi", match_type="ODI"),
+        first_only,
+        no_target,
+    ]
+    audit = audit_matches(matches)
+    buckets = [
+        audit.unsupported_match_formats,
+        audit.abandoned_or_no_result,
+        audit.tied_matches,
+        audit.dls_or_method_matches,
+        audit.super_over_or_eliminator_matches,
+        audit.missing_or_invalid_binary_outcomes,
+        audit.incomplete_or_unsupported,
+    ]
+    assert audit.completed_usable_matches == 0
+    assert sum(buckets) == audit.total_matches == 9
+    assert audit.unsupported_match_formats == 1
+    assert audit.abandoned_or_no_result == 1
+    assert audit.tied_matches == 1
+    assert audit.dls_or_method_matches == 1
+    assert audit.super_over_or_eliminator_matches == 1
+    assert audit.missing_or_invalid_binary_outcomes == 3
+    assert audit.incomplete_or_unsupported == 1
+    assert exclusion_category("unsupported_match_type") == "unsupported_match_formats"
+    assert exclusion_category("tie") != exclusion_category("super_over_present")

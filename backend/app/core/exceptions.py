@@ -33,3 +33,7 @@ class InferenceError(PulseIQError):
 
 class ModelRegistryError(PulseIQError):
     """Raised when a model artifact cannot be saved or loaded."""
+
+
+class IntelligenceError(PulseIQError):
+    """Raised when match-intelligence inputs are invalid."""

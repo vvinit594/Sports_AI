@@ -28,6 +28,19 @@ Usable match ids: `335987`, `335988`, `1082591`, `1082592`, `1082628`,
 Excluded: `1082625` (tie), `1082648` (D/L), `1216517` (tie, two super-over
 pairs), `1359519` (no result).
 
+Audit buckets are mutually exclusive. A tie decided by super over is counted
+as a tie, not also as a super-over decision. Current sample:
+
+| Bucket | Count |
+| --- | --- |
+| unsupported match formats | 0 |
+| no result / abandoned | 1 |
+| tied outcomes | 2 |
+| D/L or revised-target method | 1 |
+| super-over / eliminator (when not already a tie) | 0 |
+| missing or invalid binary outcomes | 0 |
+| incomplete or unsupported records | 0 |
+
 Date range of usable matches: 2008-04-21 to 2024-05-26.
 
 ## What is missing or inconsistent
@@ -35,8 +48,8 @@ Date range of usable matches: 2008-04-21 to 2024-05-26.
 - The sample is a curated edge-case set, not a random T20 population.
 - Men's IPL, women's T20, and one unofficial men's international are mixed.
 - Super-over and D/L matches are present but excluded from labels.
-- Phase 1 `DeliveryApplied` does not carry `non_boundary`; boundary features
-  consult the source match when it is supplied.
+- Phase 1 `DeliveryApplied` now copies source `non_boundary`. Boundary
+  features use that flag instead of assuming every 4 or 6 is a boundary.
 - No player-level form, venue, toss decision, or live weather features exist.
 - 11 labeled matches cannot support a reliable 70/15/15 evaluation.
 
@@ -70,6 +83,9 @@ Matches are sorted by first date, then match id.
 
 No delivery from one match appears in two splits. If fewer than three labeled
 matches exist, all rows stay in train and evaluation is skipped.
+
+Fitting uses train matches only. Validation metrics are diagnostic and are
+not used to choose a model. Test matches are never seen during fitting.
 
 On the current 11 labeled matches the split is chronological and implemented,
 but it is **not a meaningful evaluation**: only two matches land in test, and

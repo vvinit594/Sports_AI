@@ -110,7 +110,7 @@ def test_extract_rejects_inactive_states():
         raise AssertionError("expected FeatureError")
 
 
-def test_non_boundary_four_is_not_counted_when_match_is_supplied():
+def test_non_boundary_four_is_not_counted_from_delivery_applied():
     raw = cricsheet_match(
         [
             innings("Alpha", [over(0, [delivery(actual_delivery="0.1", batter_runs=1)])]),
@@ -139,7 +139,43 @@ def test_non_boundary_four_is_not_counted_when_match_is_supplied():
     after_four = next(
         state for state in chase if state.last_delivery and state.last_delivery.batter_runs == 4
     )
-    features = extract_feature_vector(after_four, states, match=match)
+    assert after_four.last_delivery is not None
+    assert after_four.last_delivery.non_boundary is True
+    features = extract_feature_vector(after_four, states)
     assert features.values["boundaries_last_6"] == 0.0
-    without_source = extract_feature_vector(after_four, states)
-    assert without_source.values["boundaries_last_6"] == 1.0
+
+
+def test_source_four_without_non_boundary_flag_counts_as_boundary():
+    raw = cricsheet_match(
+        [
+            innings("Alpha", [over(0, [delivery(actual_delivery="0.1", batter_runs=1)])]),
+            innings(
+                "Beta",
+                [
+                    over(
+                        0,
+                        [
+                            delivery(actual_delivery="0.1", batter_runs=1),
+                            delivery(actual_delivery="0.2", batter_runs=4),
+                            delivery(actual_delivery="0.3", batter_runs=0),
+                            delivery(actual_delivery="0.4", batter_runs=0),
+                        ],
+                    )
+                ],
+                target={"runs": 20, "overs": 2},
+            ),
+        ],
+        dates=["2024-01-01"],
+        overs=2,
+    )
+    match = parse_cricsheet_dict(raw, source_match_id="true-boundary")
+    states = MatchStateEngine(match).reconstruct()
+    after_four = next(
+        state
+        for state in states
+        if state.last_delivery is not None and state.last_delivery.batter_runs == 4
+    )
+    assert after_four.last_delivery is not None
+    assert after_four.last_delivery.non_boundary is False
+    features = extract_feature_vector(after_four, states, match=match)
+    assert features.values["boundaries_last_6"] == 1.0

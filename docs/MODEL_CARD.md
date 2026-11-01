@@ -36,6 +36,19 @@ Shared configuration:
 - Random seed `42`
 - Class weight `balanced`
 - Match-level chronological 70/15/15 split
+- Fitted on train matches only
+- Validation is diagnostic only; it is not used for model selection
+- Test data is never used during fitting
+
+## Evaluation
+
+Delivery-level log loss, Brier, ROC-AUC, accuracy, and ECE remain as
+diagnostics. They overweight matches with more deliveries.
+
+Match-level metrics aggregate each match once as the **mean of its delivery
+probabilities**, paired with the match label. Report `n_matches`,
+`n_positive_matches`, and `n_negative_matches`. These figures are not
+calibrated ball-by-ball performance and are not used to select a model.
 
 ## Inference
 
@@ -65,14 +78,18 @@ A moment may be emitted when:
 - a major scoring event occurs
 - required run rate shifts by at least `chase_equation_rrr_delta`
 
-Cooldown (`cooldown_deliveries`, default 6) and duplicate sequence
-suppression prevent the same passage of play from being emitted repeatedly.
+Cooldown (`cooldown_deliveries`, default 6) is the gap in delivery sequence
+numbers after the last emitted moment. Inputs must belong to one match.
+Conflicting duplicate predictions are rejected; identical duplicates are
+deduplicated. Predictions without a matching state are rejected. Caller
+order does not change results.
 
 ## Known limitations
 
 - 11 labeled matches are not a T20 population.
 - Delivery rows from one match share one label, so delivery-level AUC is
-  inflated by within-match correlation.
+  inflated by within-match correlation. Use match-level mean probability
+  when comparing matches.
 - No player, venue, toss, or competition features.
 - D/L and super-over matches are excluded rather than modeled.
 - The heuristic coefficients are documented constants, not learned.

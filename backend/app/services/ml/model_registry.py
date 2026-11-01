@@ -31,6 +31,8 @@ class ModelMetadata(BaseModel):
     evaluation_is_meaningful: bool = False
     evaluation_limitation: str | None = None
     target_definition: str
+    fitted_split: str = "train"
+    validation_role: str = "diagnostic_only"
     notes: tuple[str, ...] = ()
 
 

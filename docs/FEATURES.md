@@ -48,7 +48,7 @@ Terminal states are reconstructed by Phase 1 and are kept out of training.
 | `runs_last_12` | Same window of 12 | `0` if none |
 | `wickets_last_6` | Counting wickets in the last 6 deliveries | `0` if none |
 | `wickets_last_12` | Same window of 12 | `0` if none |
-| `boundaries_last_6` | 4s and 6s in the last 6 deliveries | `0` if none |
+| `boundaries_last_6` | Source 4s and 6s in the last 6 deliveries (`non_boundary` is false) | `0` if none |
 | `boundaries_last_12` | Same window of 12 | `0` if none |
 | `missing_*` | Explicit 0/1 flags for nullable fields | never missing |
 
@@ -62,8 +62,10 @@ situation.
 - Recent windows use the current delivery plus earlier `at_delivery` states
   in the same innings. The current ball is known at the prediction timestamp.
 - History rows with `sequence > current.sequence` are ignored.
-- A 4 or 6 batter-runs event is a boundary unless the source delivery has
-  `non_boundary=true` and the original match is supplied.
+- A 4 or 6 batter-runs event is a boundary only when
+  `DeliveryApplied.non_boundary` is false. That flag is copied from Cricsheet
+  during Phase 1 replay. All-run fours/sixes marked `non_boundary` are not
+  counted. The flag is not inferred when the source omitted it.
 - Pre-innings chase snapshots (0/0, target known) are valid prediction
   states. Their recent windows are zero.
 - First-innings states can be featurized but are not chase-win training rows.

@@ -197,8 +197,8 @@ def extract_feature_vector(
         "runs_last_12": _sum_runs(recent_long),
         "wickets_last_6": _sum_counting_wickets(recent_short),
         "wickets_last_12": _sum_counting_wickets(recent_long),
-        "boundaries_last_6": _sum_boundaries(recent_short, match),
-        "boundaries_last_12": _sum_boundaries(recent_long, match),
+        "boundaries_last_6": _sum_boundaries(recent_short),
+        "boundaries_last_12": _sum_boundaries(recent_long),
         "missing_target": 1.0 if missing_target else 0.0,
         "missing_balls_remaining": 1.0 if missing_balls else 0.0,
         "missing_scheduled_balls": 1.0 if missing_scheduled else 0.0,
@@ -272,10 +272,10 @@ def _sum_counting_wickets(states: Sequence[MatchState]) -> float:
     return float(total)
 
 
-def _sum_boundaries(states: Sequence[MatchState], match: NormalizedMatch | None) -> float:
+def _sum_boundaries(states: Sequence[MatchState]) -> float:
     total = 0
     for state in states:
-        if _is_boundary(_delivery(state), match):
+        if _is_boundary(_delivery(state)):
             total += 1
     return float(total)
 
@@ -286,22 +286,18 @@ def _delivery(state: MatchState) -> DeliveryApplied:
     return state.last_delivery
 
 
-def _is_boundary(delivery: DeliveryApplied, match: NormalizedMatch | None) -> bool:
-    """Count 4 and 6 batter runs as boundaries when non_boundary is unknown.
+def _is_boundary(delivery: DeliveryApplied) -> bool:
+    """Count 4 and 6 batter runs only when the source did not mark non_boundary.
 
-    Phase 1 ``DeliveryApplied`` does not carry ``non_boundary``. When the
-    original match is supplied, the source delivery is used. Otherwise an
-    all-run four or six is counted as a boundary.
+    ``DeliveryApplied.non_boundary`` is copied from Cricsheet during replay.
+    A four or six is not counted unless that flag is false. Missing source
+    flags stay false, matching Cricsheet's convention that ``non_boundary``
+    is present only for all-run fours and sixes.
     """
 
     if delivery.batter_runs not in {4, 6}:
         return False
-    if match is None:
-        return True
-    for source in match.deliveries:
-        if source.sequence == delivery.sequence:
-            return not source.non_boundary
-    return True
+    return not delivery.non_boundary
 
 
 def _resources_remaining(

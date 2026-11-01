@@ -30,15 +30,17 @@ class TrainedModel:
 
 
 def fit_baseline_models(dataset: TrainingDataset) -> dict[str, TrainedModel]:
-    """Fit logistic regression and random forest. XGBoost is not used.
+    """Fit logistic regression and random forest on the train split only.
 
-    The current official sample is too small to justify another tree-boosting
-    dependency. Add XGBoost only after a larger Cricsheet corpus exists.
+    Validation and test matches are never used during fitting. Validation
+    metrics are diagnostic only; they do not select a model. The current
+    official sample is too small for model selection or XGBoost.
     """
 
     train = dataset.examples_for("train")
     if not train:
         raise DatasetError("training split is empty")
+    _assert_fit_uses_train_only(dataset, train)
 
     x_train = _feature_matrix(train)
     y_train = np.asarray([example.label for example in train], dtype=int)
@@ -135,8 +137,12 @@ def _wrap(
         evaluation_is_meaningful=dataset.evaluation_is_meaningful,
         evaluation_limitation=dataset.evaluation_limitation,
         target_definition="1 if the regulation chasing team won; 0 if it lost",
+        fitted_split="train",
+        validation_role="diagnostic_only",
         notes=(
             "Fitted only on chronological train matches. "
+            "Validation is diagnostic only and is not used for model selection. "
+            "Test data is never used during fitting. "
             "Terminal and inactive states are excluded.",
         ),
     )
@@ -162,6 +168,16 @@ def _evaluate_split(
         match_ids=[example.source_match_id for example in examples],
         evaluation_is_meaningful=dataset.evaluation_is_meaningful and split == "test",
     )
+
+
+def _assert_fit_uses_train_only(dataset: TrainingDataset, train) -> None:
+    train_ids = {example.source_match_id for example in train}
+    allowed = set(dataset.train_match_ids)
+    forbidden = set(dataset.validation_match_ids) | set(dataset.test_match_ids)
+    if train_ids - allowed:
+        raise DatasetError("training rows are not isolated to train match ids")
+    if train_ids & forbidden:
+        raise DatasetError("validation or test matches leaked into model fitting")
 
 
 def _feature_matrix(examples) -> np.ndarray:

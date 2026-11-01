@@ -14,6 +14,21 @@ def test_official_sample_audit_counts():
     assert audit.abandoned_or_no_result == 1
     assert audit.tied_matches == 2
     assert audit.dls_or_method_matches == 1
+    assert audit.unsupported_match_formats == 0
+    assert audit.super_over_or_eliminator_matches == 0
+    assert audit.missing_or_invalid_binary_outcomes == 0
+    assert audit.incomplete_or_unsupported == 0
+    assert (
+        audit.completed_usable_matches
+        + audit.unsupported_match_formats
+        + audit.abandoned_or_no_result
+        + audit.tied_matches
+        + audit.dls_or_method_matches
+        + audit.super_over_or_eliminator_matches
+        + audit.missing_or_invalid_binary_outcomes
+        + audit.incomplete_or_unsupported
+        == audit.total_matches
+    )
     assert audit.usable_delivery_states == 1268
     assert "1082625" in audit.excluded_match_ids
     assert "1082648" in audit.excluded_match_ids

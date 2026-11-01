@@ -41,10 +41,12 @@ class DatasetAudit(BaseModel):
     total_matches: int
     valid_t20_matches: int
     completed_usable_matches: int
+    unsupported_match_formats: int = 0
     abandoned_or_no_result: int
     tied_matches: int
     dls_or_method_matches: int
     super_over_or_eliminator_matches: int
+    missing_or_invalid_binary_outcomes: int = 0
     incomplete_or_unsupported: int
     usable_delivery_states: int
     source_deliveries: int
@@ -194,10 +196,12 @@ def audit_matches(matches: Sequence[NormalizedMatch]) -> DatasetAudit:
     excluded_ids: list[str] = []
     notes: list[str] = []
     counts = {
+        "unsupported_match_formats": 0,
         "abandoned_or_no_result": 0,
         "tied_matches": 0,
         "dls_or_method_matches": 0,
         "super_over_or_eliminator_matches": 0,
+        "missing_or_invalid_binary_outcomes": 0,
         "incomplete_or_unsupported": 0,
     }
     usable_states = 0
@@ -230,10 +234,12 @@ def audit_matches(matches: Sequence[NormalizedMatch]) -> DatasetAudit:
         total_matches=len(matches),
         valid_t20_matches=valid_t20,
         completed_usable_matches=len(usable_ids),
+        unsupported_match_formats=counts["unsupported_match_formats"],
         abandoned_or_no_result=counts["abandoned_or_no_result"],
         tied_matches=counts["tied_matches"],
         dls_or_method_matches=counts["dls_or_method_matches"],
         super_over_or_eliminator_matches=counts["super_over_or_eliminator_matches"],
+        missing_or_invalid_binary_outcomes=counts["missing_or_invalid_binary_outcomes"],
         incomplete_or_unsupported=counts["incomplete_or_unsupported"],
         usable_delivery_states=usable_states,
         source_deliveries=source_deliveries,
@@ -334,17 +340,26 @@ def write_dataset(dataset: TrainingDataset, output_dir: str | Path) -> dict[str,
     return {"examples": frame_path, "split": split_path, "audit": audit_path}
 
 
-def _tally_exclusion(counts: dict[str, int], reason: str | None) -> None:
+def exclusion_category(reason: str | None) -> str:
+    """Map a label-exclusion reason to one mutually exclusive audit bucket."""
+
+    if reason == "unsupported_match_type":
+        return "unsupported_match_formats"
     if reason in {"no_result", "abandoned"}:
-        counts["abandoned_or_no_result"] += 1
-    elif reason in {"tie", "draw"}:
-        counts["tied_matches"] += 1
-    elif reason and reason.startswith("method:"):
-        counts["dls_or_method_matches"] += 1
-    elif reason in {"eliminator_or_bowl_out", "super_over_present"}:
-        counts["super_over_or_eliminator_matches"] += 1
-    else:
-        counts["incomplete_or_unsupported"] += 1
+        return "abandoned_or_no_result"
+    if reason == "tie":
+        return "tied_matches"
+    if reason and reason.startswith("method:"):
+        return "dls_or_method_matches"
+    if reason in {"eliminator_or_bowl_out", "super_over_present"}:
+        return "super_over_or_eliminator_matches"
+    if reason in {"no_winner", "winner_not_in_teams", "missing_chase_target", "draw"}:
+        return "missing_or_invalid_binary_outcomes"
+    return "incomplete_or_unsupported"
+
+
+def _tally_exclusion(counts: dict[str, int], reason: str | None) -> None:
+    counts[exclusion_category(reason)] += 1
 
 
 def _assert_no_split_leakage(examples: Sequence[TrainingExample]) -> None:

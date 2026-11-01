@@ -119,12 +119,30 @@ def test_model_persistence_round_trip(tmp_path: Path):
     restored = predict_one(loaded, chase, states, match=match)
     assert original.probability == restored.probability
     assert loaded.metadata.feature_schema_version == FEATURE_SCHEMA_VERSION
+    assert loaded.metadata.fitted_split == "train"
+    assert loaded.metadata.validation_role == "diagnostic_only"
+    train_ids = set(dataset.train_match_ids)
+    assert set(loaded.metadata.train_match_ids) == train_ids
+    assert not (set(loaded.metadata.validation_match_ids) & train_ids)
+    assert not (set(loaded.metadata.test_match_ids) & train_ids)
+    assert "Validation is diagnostic only" in " ".join(loaded.metadata.notes)
+
+
+def test_fitting_never_uses_validation_or_test_match_ids():
+    dataset = build_training_dataset(_labeled_matches())
+    trained = fit_baseline_models(dataset)
+    artifact = trained["logistic_regression"].artifact
+    fitted_rows = {example.source_match_id for example in dataset.examples_for("train")}
+    assert fitted_rows <= set(artifact.metadata.train_match_ids)
+    assert fitted_rows.isdisjoint(artifact.metadata.validation_match_ids)
+    assert fitted_rows.isdisjoint(artifact.metadata.test_match_ids)
+    assert artifact.metadata.validation_role == "diagnostic_only"
 
 
 def test_evaluation_helper_computes_held_out_metrics_without_claiming_quality():
     report = evaluate_binary_probabilities(
-        [0, 1, 0, 1],
-        [0.2, 0.8, 0.4, 0.7],
+        [0, 0, 1, 1],
+        [0.2, 0.4, 0.8, 0.7],
         match_ids=["a", "a", "b", "b"],
         evaluation_is_meaningful=False,
     )

@@ -7,7 +7,12 @@ from app.services.ml.dataset_builder import (
     build_training_dataset,
     chronological_match_split,
 )
-from app.services.ml.evaluate import EvaluationReport, evaluate_binary_probabilities
+from app.services.ml.evaluate import (
+    MATCH_LEVEL_AGGREGATION,
+    EvaluationReport,
+    MatchLevelEvaluation,
+    evaluate_binary_probabilities,
+)
 from app.services.ml.features import (
     FEATURE_NAMES,
     FEATURE_SCHEMA_VERSION,
@@ -28,8 +33,10 @@ from app.services.ml.train import TrainedModel, fit_baseline_models
 __all__ = [
     "FEATURE_NAMES",
     "FEATURE_SCHEMA_VERSION",
+    "MATCH_LEVEL_AGGREGATION",
     "DatasetAudit",
     "EvaluationReport",
+    "MatchLevelEvaluation",
     "FeatureVector",
     "InferenceResult",
     "ModelArtifact",

@@ -75,12 +75,23 @@ def main() -> None:
         reports = payload["reports"]
         print(f"\n{name}")
         for split, report in reports.items():
+            match_level = report.get("match_level") or {}
             print(
-                f"  {split}: n={report['n_rows']} matches={report['n_matches']} "
+                f"  {split} delivery: n={report['n_rows']} matches={report['n_matches']} "
                 f"log_loss={report['log_loss']} brier={report['brier_score']} "
                 f"auc={report['roc_auc']} acc={report['accuracy']} "
                 f"meaningful={report['evaluation_is_meaningful']}"
             )
+            if match_level:
+                print(
+                    f"  {split} match-mean: n={match_level.get('n_matches')} "
+                    f"pos={match_level.get('n_positive_matches')} "
+                    f"neg={match_level.get('n_negative_matches')} "
+                    f"log_loss={match_level.get('log_loss')} "
+                    f"brier={match_level.get('brier_score')} "
+                    f"auc={match_level.get('roc_auc')} "
+                    f"acc={match_level.get('accuracy')}"
+                )
 
 
 if __name__ == "__main__":

@@ -3,6 +3,18 @@
 This is not a second classifier. Moments are emitted from configured
 thresholds on probability change, wickets, boundaries, and chase-equation
 shifts, with cooldown and duplicate suppression.
+
+Inputs are validated before detection:
+
+- Every prediction and state must share one ``source_match_id``.
+- Conflicting duplicate prediction sequences are rejected.
+- Identical duplicate predictions are deduplicated.
+- Predictions with no matching state are rejected.
+- States without a prediction are ignored.
+- Results are computed after sorting by delivery sequence, so caller order
+  does not change the output.
+- Cooldown is the difference in delivery ``sequence`` numbers after the last
+  emitted moment, not a count of list items or detected events.
 """
 
 from __future__ import annotations
@@ -12,6 +24,7 @@ from enum import StrEnum
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.core.exceptions import IntelligenceError
 from app.schemas.state import MatchState
 from app.services.ml.inference import ProbabilityPrediction
 
@@ -53,26 +66,20 @@ def detect_significant_moments(
     *,
     config: MomentDetectorConfig | None = None,
 ) -> list[SignificantMoment]:
-    """Detect moments from consecutive eligible chase predictions.
-
-    ``predictions`` must be ordered by sequence and refer to the same match
-    as ``states``. Duplicate sequences are ignored. After a moment is emitted,
-    further moments are suppressed until ``cooldown_deliveries`` later
-    sequences have passed.
-    """
+    """Detect moments from consecutive eligible chase predictions for one match."""
 
     settings = config or MomentDetectorConfig()
-    by_sequence = {prediction.sequence: prediction for prediction in predictions}
-    ordered = [state for state in states if state.sequence in by_sequence]
-    ordered.sort(key=lambda state: state.sequence)
+    if not predictions:
+        return []
+
+    match_id = _require_single_match_id(states, predictions)
+    by_sequence = _index_predictions(predictions, match_id)
+    ordered = _align_states(states, by_sequence, match_id)
 
     moments: list[SignificantMoment] = []
     last_emitted_sequence: int | None = None
-    seen_sequences: set[int] = set()
 
     for previous, current in zip(ordered, ordered[1:]):
-        if current.sequence in seen_sequences:
-            continue
         if (
             last_emitted_sequence is not None
             and current.sequence - last_emitted_sequence < settings.cooldown_deliveries
@@ -86,7 +93,6 @@ def detect_significant_moments(
         if not types:
             continue
 
-        seen_sequences.add(current.sequence)
         last_emitted_sequence = current.sequence
         primary = types[0]
         moments.append(
@@ -102,6 +108,69 @@ def detect_significant_moments(
             )
         )
     return moments
+
+
+def _require_single_match_id(
+    states: Sequence[MatchState],
+    predictions: Sequence[ProbabilityPrediction],
+) -> str:
+    prediction_ids = {item.source_match_id for item in predictions}
+    if len(prediction_ids) != 1:
+        raise IntelligenceError("predictions must all belong to the same source_match_id")
+    match_id = next(iter(prediction_ids))
+    state_ids = {state.source_match_id for state in states}
+    if any(state_id != match_id for state_id in state_ids):
+        raise IntelligenceError(
+            f"states include match ids {sorted(state_ids)} which do not match {match_id}"
+        )
+    return match_id
+
+
+def _index_predictions(
+    predictions: Sequence[ProbabilityPrediction],
+    match_id: str,
+) -> dict[int, ProbabilityPrediction]:
+    indexed: dict[int, ProbabilityPrediction] = {}
+    for prediction in predictions:
+        if prediction.source_match_id != match_id:
+            raise IntelligenceError("predictions must all belong to the same source_match_id")
+        existing = indexed.get(prediction.sequence)
+        if existing is None:
+            indexed[prediction.sequence] = prediction
+            continue
+        if existing.model_dump() != prediction.model_dump():
+            raise IntelligenceError(
+                f"conflicting predictions for {match_id} sequence {prediction.sequence}"
+            )
+    return indexed
+
+
+def _align_states(
+    states: Sequence[MatchState],
+    predictions: dict[int, ProbabilityPrediction],
+    match_id: str,
+) -> list[MatchState]:
+    unique: dict[int, MatchState] = {}
+    for state in states:
+        if state.source_match_id != match_id:
+            raise IntelligenceError(
+                f"state {state.source_match_id}#{state.sequence} is not from {match_id}"
+            )
+        existing = unique.get(state.sequence)
+        if existing is None:
+            unique[state.sequence] = state
+            continue
+        if existing.model_dump() != state.model_dump():
+            raise IntelligenceError(
+                f"conflicting states for {match_id} sequence {state.sequence}"
+            )
+
+    missing = sorted(sequence for sequence in predictions if sequence not in unique)
+    if missing:
+        raise IntelligenceError(
+            f"predictions have no matching state in {match_id}: {missing}"
+        )
+    return [unique[sequence] for sequence in sorted(predictions)]
 
 
 def _classify(

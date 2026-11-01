@@ -94,6 +94,7 @@ are the situation immediately after that many deliveries.
 | `terminal_legal_balls` | Frozen legal-ball count at terminal time |
 | `terminal_overs` | Frozen overs notation at terminal time |
 | `outcome` | Copied from source; never inferred by the engine |
+| `last_delivery.non_boundary` | Copied from the source delivery; scoring does not use this flag |
 
 ## Assumptions
 

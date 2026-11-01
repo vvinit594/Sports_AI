@@ -28,6 +28,7 @@ class DeliveryApplied(BaseModel):
     is_legal_delivery: bool
     is_wide: bool
     is_noball: bool
+    non_boundary: bool = False
     wickets: tuple[WicketInfo, ...] = ()
 
 

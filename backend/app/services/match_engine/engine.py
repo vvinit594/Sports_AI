@@ -198,6 +198,7 @@ class MatchStateEngine:
                 is_legal_delivery=delivery.is_legal_delivery,
                 is_wide=delivery.is_wide,
                 is_noball=delivery.is_noball,
+                non_boundary=delivery.non_boundary,
                 wickets=delivery.wickets,
             ),
             warnings=tuple(warnings),
