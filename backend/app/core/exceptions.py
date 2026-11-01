@@ -37,3 +37,42 @@ class ModelRegistryError(PulseIQError):
 
 class IntelligenceError(PulseIQError):
     """Raised when match-intelligence inputs are invalid."""
+
+
+class CatalogError(PulseIQError):
+    """Raised when a historical match cannot be loaded for the API."""
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        code: str = "match_not_found",
+        status_code: int = 404,
+    ):
+        super().__init__(message)
+        self.code = code
+        self.status_code = status_code
+
+
+class ExplanationError(PulseIQError):
+    """Raised when an explanation cannot be produced from supplied evidence."""
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        code: str = "explanation_error",
+        status_code: int = 400,
+    ):
+        super().__init__(message)
+        self.code = code
+        self.status_code = status_code
+
+
+class ProviderError(ExplanationError):
+    """Raised when the configured LLM provider fails."""
+
+    def __init__(
+        self, message: str, *, code: str = "provider_error", status_code: int = 502
+    ):
+        super().__init__(message, code=code, status_code=status_code)

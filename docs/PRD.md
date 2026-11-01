@@ -1,4 +1,4 @@
-# PulseIQ Product Requirements — Phase 1 and Phase 2
+# PulseIQ Product Requirements — Phase 1, Phase 2, and Phase 3
 
 ## Status
 
@@ -8,14 +8,17 @@ Phase 2: chase-win feature pipeline, baseline models, inference, and
 deterministic moment detection. The 15-match sample is not a production
 training corpus.
 
-This document does not claim that Generative AI, personalization, APIs, or
-the frontend exist. Those are later phases.
+Phase 3: backend API and grounded GenAI explanations over historical
+Cricsheet samples. This is not a live cricket integration, and it is not a
+production-accurate win-probability product.
 
 ## Problem
 
 Live cricket produces a dense stream of deliveries, extras, wickets, and
 scoreboard changes. Before PulseIQ can rank moments or explain them, it must
 reconstruct the match situation after every ball from historical source data.
+Fans then need that situation explained at a level they can understand,
+without the model inventing the scoreboard.
 
 ## Phase 1 goal
 
@@ -57,9 +60,39 @@ Build a reliable cricket data-processing foundation that can:
 - Live cricket APIs.
 - Deployment.
 
+## Phase 3 goal
+
+1. Expose historical match metadata and reconstructed state over HTTP.
+2. Expose Phase 2 win-probability and significant-moment results without
+   duplicating cricket or ML logic.
+3. Generate beginner, casual, and advanced explanations from supplied evidence
+   only.
+4. Support one configured LLM provider (mock, Gemini, or OpenAI-compatible)
+   without hardcoding keys.
+
+## Out of scope for Phase 3
+
+- Next.js / React frontend and dashboards.
+- User authentication, profiles, and personalization storage.
+- Redis, background workers, WebSockets.
+- Real-time live data providers.
+- Autonomous agents, RAG, vector databases.
+- Kafka, microservices, and production deployment infrastructure.
+- Claiming that historical sample files are live matches.
+- Claiming that the 11-match model corpus is production-accurate.
+
+## Authentication decision
+
+Phase 3 does not add authentication. This PRD does not define user accounts,
+and the API currently serves local historical samples. Auth is deferred until
+a later phase that introduces users or a public network deployment.
+
 ## Success criteria
 
 - Parser handles representative real Cricsheet T20 files without inventing fields.
 - Reconstructed innings totals match source delivery sums.
 - The same match replayed twice produces identical states.
-- Unit and real-match tests pass.
+- Unit, real-match, API, and mocked GenAI tests pass.
+- Missing model artifacts and unsupported states return explicit unavailable
+  payloads instead of fabricated numbers.
+- Explanation tests do not call a hosted LLM.

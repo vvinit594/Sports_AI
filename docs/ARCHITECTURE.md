@@ -1,13 +1,15 @@
-# PulseIQ Architecture — Phase 1 and Phase 2
+# PulseIQ Architecture — Phase 1, Phase 2, and Phase 3
 
 ## Scope
 
 Phase 1 reconstructs cricket match state. Phase 2 adds chase-win features,
-baseline models, inference, and deterministic moment detection. There is still
-no HTTP server, database, cache, frontend, or generative AI.
+baseline models, inference, and deterministic moment detection. Phase 3 adds a
+modular FastAPI application and a provider-independent GenAI explanation
+service. There is still no database, cache, frontend, live cricket provider,
+authentication, or agent framework.
 
 ```
-Cricsheet JSON
+Cricsheet JSON (historical samples)
       │
       ▼
 ingestion.parser
@@ -25,34 +27,53 @@ ml.features / ml.dataset_builder
       ├── ml.train / ml.evaluate / ml.model_registry
       ├── ml.inference
       └── intelligence.moment_detector
+      │
+      ▼
+services.api.catalog / intelligence   (read-only wrappers)
+services.explanations                 (grounded LLM explainer)
+      │
+      ▼
+FastAPI  /api/v1
 ```
 
 ## Package layout
 
 | Path | Responsibility |
 | --- | --- |
-| `backend/app/core` | Cricket rules, constants, exceptions |
-| `backend/app/schemas` | Normalized Pydantic models |
+| `backend/app/core` | Cricket rules, constants, exceptions, settings, logging |
+| `backend/app/schemas` | Normalized Pydantic models and API contracts |
+| `backend/app/api` | FastAPI routes, dependencies, structured errors |
 | `backend/app/services/ingestion` | Cricsheet parser |
 | `backend/app/services/match_engine` | State reconstruction and validation |
 | `backend/app/services/replay` | Deterministic historical replay |
 | `backend/app/services/ml` | Features, dataset, train, evaluate, inference |
 | `backend/app/services/intelligence` | Win-probability series and moment detection |
+| `backend/app/services/api` | Historical catalog and API wrappers |
+| `backend/app/services/explanations` | Grounded explanation service and LLM providers |
 | `backend/models` | Local Joblib artifacts (gitignored binaries) |
 | `backend/scripts` | Ingest, replay, audit, train, and evaluate CLIs |
-| `backend/tests` | Unit, validation, real-match, and Phase 2 tests |
+| `backend/tests` | Unit, validation, real-match, Phase 2, and API tests |
 | `data/raw/cricsheet/samples` | Small official Cricsheet T20 sample |
 
-Later phases can add `api`, SQLAlchemy models, GenAI, and the Next.js app
-without changing the match-engine contracts. Phase 2 does not train a
-production model on the 15-file sample. See `docs/MODEL_CARD.md`.
+The API does not duplicate cricket calculations. Route handlers call catalog
+and explanation services. Those services call the existing Phase 1 and Phase 2
+modules.
+
+See `docs/API.md`, `docs/GENAI_EXPLANATIONS.md`, and `docs/MODEL_CARD.md`.
 
 ## Design decisions
 
 ### Modular monolith, not services
 
-Parsing, reconstruction, and replay stay in one package. There is no message
-bus and no microservice split.
+Parsing, reconstruction, replay, ML, explanations, and HTTP stay in one
+package. There is no message bus, Kafka, Redis, or microservice split.
+
+### Historical catalog, live-ready boundary
+
+`MatchCatalog` loads local Cricsheet JSON and reconstructs states once. The
+lookup surface (`list_summaries`, `get`, `state_at`) is the seam for a future
+live provider. API contracts already label payloads as
+`historical_cricsheet`. Historical files are not presented as live matches.
 
 ### Source fields vs derived fields
 
@@ -96,10 +117,38 @@ supported.
 `ReplayEngine` reconstructs the full state list once. `next`, `seek`, and
 `restart` only move a cursor. No clock, network, or random source is used.
 
+### Win probability and moments
+
+The API loads one registry artifact or reports `model_artifact_missing`. It
+does not silently substitute a heuristic when no file exists. Moment detection
+reuses `detect_significant_moments` unchanged.
+
+The 11-match labeled sample is not a production training corpus.
+`evaluation_is_meaningful` and `evaluation_limitation` are returned with
+predictions.
+
+### GenAI explanations
+
+The LLM explains supplied evidence. Scores, wickets, run rates, and
+probabilities come from the match engine and ML services. Providers are
+selected by `LLM_PROVIDER` (`mock`, `gemini`, or `openai`). HTTP calls use
+httpx with bounded timeouts and retries. Tests use the mock provider and never
+open a real LLM network connection.
+
+### Authentication
+
+Not implemented. The PRD does not require user accounts in this phase.
+
+### CORS and secrets
+
+CORS origins come from `PULSEIQ_CORS_ORIGINS`. API keys stay in environment
+variables, are not logged, and are not returned in responses. `.env` remains
+gitignored.
+
 ### Redis and PostgreSQL
 
-Not used in Phase 1. Redis remains optional for later caching and must not
-become a local-development requirement for match processing.
+Not used. Redis remains optional for later caching and must not become a
+local-development requirement for match processing.
 
 ## Data flow for one delivery
 
@@ -114,3 +163,11 @@ become a local-development requirement for match processing.
    `innings_runs_at_delivery` keeps the score that was known on the ball.
 8. Later source deliveries after a terminal condition are preserved and flagged
    as `source_delivery_after_terminal`. They are not active prediction states.
+
+## HTTP data flow
+
+1. Catalog returns a cached `NormalizedMatch` and reconstructed `MatchState` list.
+2. Win-probability calls `win_probabilities_for_match` with those states.
+3. Moments call `detect_significant_moments` on that prediction series.
+4. Explanations build `ExplanationContext` from the same objects, then call one
+   configured LLM provider for structured JSON.

@@ -4,25 +4,31 @@ The Adaptive Intelligence Layer for Live Sports.
 
 Phase 1 implements the cricket data foundation and historical match replay
 engine. Phase 2 adds chase-win features, baseline models, inference, and
-moment detection. Generative AI, APIs, and the web application are not part
-of these phases. The 15 official sample matches are not enough for a
+moment detection. Phase 3 adds a FastAPI application and a provider-independent
+GenAI explanation service over that existing intelligence.
+
+The 15 official sample matches are historical files, not a live feed. Eleven
+of them are usable for chase-win labels. That corpus is not enough for a
 production-quality model.
 
-## What Phase 1 does
+## What exists today
 
 - Parses official Cricsheet T20 JSON.
-- Reconstructs ball-by-ball match state: score, wickets, legal balls, overs,
-  current run rate, target, runs remaining, and required run rate.
-- Handles extras, wickets on wides/no-balls, innings transitions, D/L targets,
-  no-results, and super overs.
+- Reconstructs ball-by-ball match state.
 - Validates reconstructed totals against the original source records.
 - Replays a historical match deterministically.
+- Extracts leakage-safe chase-win features and trains baseline models.
+- Serves match metadata, reconstructed state, win probability, significant
+  moments, and grounded explanations over HTTP.
 
 ## Requirements
 
 - Python 3.12+
 - A virtual environment
-- No PostgreSQL, Redis, or LLM keys
+- Optional: a Gemini or OpenAI-compatible API key for hosted explanations.
+  The default `LLM_PROVIDER=mock` needs no key.
+
+PostgreSQL, Redis, and authentication are not used in Phase 3.
 
 ## Setup
 
@@ -32,6 +38,8 @@ python -m venv .venv
 pip install -r backend\requirements.txt
 ```
 
+Copy `.env.example` to `.env` if you need local overrides. Do not commit `.env`.
+
 ## Tests
 
 From the repository root after activating the virtual environment:
@@ -40,6 +48,32 @@ From the repository root after activating the virtual environment:
 cd backend
 python -m pytest
 ```
+
+Lint and format (from the repository root):
+
+```powershell
+python -m ruff check backend
+python -m ruff format --check backend
+```
+
+Automated tests do not call a hosted LLM. They use the mock provider and
+httpx transports.
+
+## Run the API
+
+```powershell
+cd backend
+python -m uvicorn app.main:create_app --factory --reload --host 127.0.0.1 --port 8000
+```
+
+OpenAPI: `http://127.0.0.1:8000/docs`
+
+See `docs/API.md` and `docs/GENAI_EXPLANATIONS.md`.
+
+Win-probability routes require a Joblib artifact in
+`backend/models/artifacts` (or `PULSEIQ_MODEL_PATH`). Train one with the
+Phase 2 scripts. If no artifact is present, those routes return
+`available: false` instead of invented probabilities.
 
 ## Ingest sample matches
 
@@ -66,8 +100,9 @@ See `docs/DATASET.md`, `docs/FEATURES.md`, and `docs/MODEL_CARD.md`.
 ## Sample data
 
 `data/raw/cricsheet/samples` contains a small official Cricsheet T20 set used
-for inspection and tests. Full competition archives are not stored here.
-Download additional files from https://cricsheet.org/downloads/ when needed.
+for inspection, tests, and the Phase 3 catalog. Full competition archives are
+not stored here. Download additional files from https://cricsheet.org/downloads/
+when needed.
 
 Cricsheet data is licensed under the Open Data Commons Attribution License.
 See `data/raw/cricsheet/LICENSE.txt`.
@@ -75,13 +110,16 @@ See `data/raw/cricsheet/LICENSE.txt`.
 ## Project layout
 
 ```
-backend/app/core                 Cricket rules
-backend/app/schemas              Normalized models
+backend/app/api                  FastAPI routes and error handlers
+backend/app/core                 Cricket rules, settings, logging
+backend/app/schemas              Normalized and API models
 backend/app/services/ingestion   Cricsheet parser
 backend/app/services/match_engine
 backend/app/services/replay
 backend/app/services/ml
 backend/app/services/intelligence
+backend/app/services/api         Match catalog and intelligence wrappers
+backend/app/services/explanations
 backend/models
 backend/tests
 data/raw/cricsheet/samples
@@ -90,5 +128,4 @@ docs/
 
 ## Next phase
 
-Phase 3 (APIs, GenAI explanations, personalization, agents, frontend) has
-not been started.
+Phase 4 (frontend, personalization, live data, agents) has not been started.
