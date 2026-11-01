@@ -1,0 +1,38 @@
+# Python
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+dist/
+build/
+
+# Environment and secrets
+.env
+.env.local
+*.pem
+
+# Node / frontend (future phases)
+node_modules/
+.next/
+out/
+
+# Data working copies and archives
+data/raw/cricsheet/_tmp/
+data/raw/cricsheet/_extract/
+data/raw/cricsheet/*.zip
+data/processed/**
+!data/processed/.gitkeep
+
+# Editor / OS
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+*.swp
