@@ -2,11 +2,9 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
-
-from fastapi import FastAPI, Request
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from starlette.types import ASGIApp, Receive, Scope, Send
 
 from app.api.errors import register_exception_handlers
 from app.api.routes import explanations, health, intelligence, matches
@@ -77,7 +75,7 @@ def create_app(
     app.state.intelligence = IntelligenceService(loaded_catalog, artifact)
     app.state.explanations = ExplanationService(loaded_catalog, provider, artifact)
 
-    app.middleware("http")(_limit_request_size(resolved.max_request_bytes))
+    app.add_middleware(RequestSizeLimitMiddleware, max_bytes=resolved.max_request_bytes)
     register_exception_handlers(app)
     app.include_router(health.router)
     app.include_router(matches.router)
@@ -86,23 +84,115 @@ def create_app(
     return app
 
 
-def _limit_request_size(max_bytes: int) -> Callable:
-    async def middleware(request: Request, call_next):
-        length = request.headers.get("content-length")
-        if length:
-            try:
-                size = int(length)
-            except ValueError:
-                size = 0
-            if size > max_bytes:
-                body = ErrorResponse(
-                    error="Request body is too large",
-                    code="request_too_large",
-                )
-                return JSONResponse(status_code=413, content=body.model_dump())
-        return await call_next(request)
+class RequestSizeLimitMiddleware:
+    """Reject request bodies larger than ``max_bytes``.
 
-    return middleware
+    ``Content-Length`` is an early hint only. The actual ASGI body is counted
+    in chunks so missing, chunked, or lying length headers cannot bypass the
+    limit. At most ``max_bytes`` body bytes are buffered, then replayed so
+    FastAPI can still parse a valid payload.
+    """
+
+    def __init__(self, app: ASGIApp, max_bytes: int):
+        self.app = app
+        self.max_bytes = max_bytes
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+
+        declared = _declared_content_length(scope)
+        if declared is _MALFORMED:
+            await _send_error(
+                send,
+                status_code=400,
+                error="Invalid Content-Length header",
+                code="invalid_content_length",
+            )
+            return
+        if declared is not None and declared > self.max_bytes:
+            await _send_error(
+                send,
+                status_code=413,
+                error="Request body is too large",
+                code="request_too_large",
+            )
+            return
+
+        body = bytearray()
+        while True:
+            message = await receive()
+            if message["type"] == "http.disconnect":
+                await self.app(
+                    scope, _replay_body(bytes(body), disconnected=True), send
+                )
+                return
+            if message["type"] != "http.request":
+                continue
+            chunk = message.get("body", b"")
+            if chunk:
+                if len(body) + len(chunk) > self.max_bytes:
+                    await _send_error(
+                        send,
+                        status_code=413,
+                        error="Request body is too large",
+                        code="request_too_large",
+                    )
+                    return
+                body.extend(chunk)
+            if not message.get("more_body", False):
+                break
+
+        await self.app(scope, _replay_body(bytes(body)), send)
+
+
+_MALFORMED = object()
+
+
+def _declared_content_length(scope: Scope) -> int | object | None:
+    raw = None
+    for name, value in scope.get("headers", []):
+        if name == b"content-length":
+            raw = value.decode("latin-1")
+            break
+    if raw is None:
+        return None
+    stripped = raw.strip()
+    if stripped == "" or not stripped.isdigit():
+        return _MALFORMED
+    return int(stripped)
+
+
+def _replay_body(body: bytes, *, disconnected: bool = False) -> Receive:
+    sent = False
+
+    async def receive() -> dict[str, object]:
+        nonlocal sent
+        if disconnected and not sent:
+            sent = True
+            return {"type": "http.disconnect"}
+        if not sent:
+            sent = True
+            return {"type": "http.request", "body": body, "more_body": False}
+        return {"type": "http.disconnect"}
+
+    return receive
+
+
+async def _send_error(send: Send, *, status_code: int, error: str, code: str) -> None:
+    payload = ErrorResponse(error=error, code=code).model_dump_json().encode("utf-8")
+    await send(
+        {
+            "type": "http.response.start",
+            "status": status_code,
+            "headers": [
+                (b"content-type", b"application/json"),
+                (b"content-length", str(len(payload)).encode("ascii")),
+            ],
+        }
+    )
+    await send({"type": "http.response.body", "body": payload})
 
 
 # Start with: python -m uvicorn app.main:create_app --factory --reload
