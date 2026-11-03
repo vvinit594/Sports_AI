@@ -30,6 +30,9 @@ production-quality model.
 
 PostgreSQL, Redis, and authentication are not used in Phase 3.
 
+Phase 4.1 adds a Next.js landing page and onboarding flow. It does not call
+the API and does not include the match dashboard.
+
 ## Setup
 
 ```powershell
@@ -67,6 +70,16 @@ python -m uvicorn app.main:create_app --factory --reload --host 127.0.0.1 --port
 ```
 
 OpenAPI: `http://127.0.0.1:8000/docs`
+
+## Run the frontend (Phase 4.1)
+
+```powershell
+cd frontend
+npm install
+npm run dev
+```
+
+Open `http://localhost:3000`. Use **Let's play** to start onboarding.
 
 See `docs/API.md` and `docs/GENAI_EXPLANATIONS.md`.
 
@@ -122,10 +135,11 @@ backend/app/services/api         Match catalog and intelligence wrappers
 backend/app/services/explanations
 backend/models
 backend/tests
+frontend/                         Landing page and onboarding
 data/raw/cricsheet/samples
 docs/
 ```
 
 ## Next phase
 
-Phase 4 (frontend, personalization, live data, agents) has not been started.
+Phase 4.2 (match dashboard and API integration) has not been started.

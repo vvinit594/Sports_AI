@@ -1,0 +1,150 @@
+@import "tailwindcss";
+
+:root {
+  --ink: #07080d;
+  --ink-2: #0c1018;
+  --surface: #141821;
+  --surface-2: #1b212c;
+  --line: rgba(255, 255, 255, 0.1);
+  --text: #f6f7fb;
+  --muted: #9aa3b5;
+  --red: #ff3b4a;
+  --red-deep: #c81e2c;
+  --gold: #f3d36a;
+  --pitch: #1f8a4d;
+  --glow: rgba(255, 59, 74, 0.45);
+  --radius-sm: 10px;
+  --radius-md: 16px;
+  --radius-lg: 24px;
+  --shadow-card: 0 18px 50px rgba(0, 0, 0, 0.35);
+}
+
+@theme inline {
+  --color-ink: var(--ink);
+  --color-ink-2: var(--ink-2);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-line: var(--line);
+  --color-text: var(--text);
+  --color-muted: var(--muted);
+  --color-red: var(--red);
+  --color-red-deep: var(--red-deep);
+  --color-gold: var(--gold);
+  --color-pitch: var(--pitch);
+  --font-display: var(--font-oswald);
+  --font-sans: var(--font-jakarta);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  min-height: 100%;
+  background: var(--ink);
+  color: var(--text);
+}
+
+body {
+  font-family: var(--font-jakarta), ui-sans-serif, system-ui, sans-serif;
+  overflow-x: hidden;
+}
+
+h1,
+h2,
+h3,
+.font-display {
+  font-family: var(--font-display), ui-sans-serif, system-ui, sans-serif;
+  letter-spacing: 0.02em;
+}
+
+a {
+  color: inherit;
+}
+
+::selection {
+  background: var(--red);
+  color: white;
+}
+
+:focus-visible {
+  outline: 2px solid var(--gold);
+  outline-offset: 3px;
+}
+
+.stadium-hero {
+  background:
+    radial-gradient(ellipse 70% 40% at 50% -10%, rgba(255, 59, 74, 0.22), transparent 58%),
+    radial-gradient(ellipse 28% 24% at 18% 8%, rgba(255, 248, 210, 0.16), transparent 70%),
+    radial-gradient(ellipse 28% 24% at 82% 8%, rgba(255, 248, 210, 0.16), transparent 70%),
+    radial-gradient(ellipse 80% 55% at 50% 108%, rgba(31, 138, 77, 0.28), transparent 62%),
+    linear-gradient(180deg, #07080d 0%, #10151d 42%, #0a120e 100%);
+}
+
+.floodlight {
+  position: absolute;
+  top: 0;
+  width: 28vw;
+  max-width: 420px;
+  height: 78%;
+  pointer-events: none;
+  background: linear-gradient(
+    180deg,
+    rgba(255, 248, 210, 0.16) 0%,
+    rgba(255, 248, 210, 0.05) 38%,
+    transparent 100%
+  );
+  clip-path: polygon(42% 0, 58% 0, 100% 100%, 0 100%);
+  animation: flood 7s ease-in-out infinite;
+}
+
+.floodlight-left {
+  left: 6%;
+}
+
+.floodlight-right {
+  right: 6%;
+  animation-delay: -2.5s;
+}
+
+@keyframes flood {
+  0%,
+  100% {
+    opacity: 0.45;
+  }
+  50% {
+    opacity: 0.9;
+  }
+}
+
+@keyframes pitch-breathe {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.035);
+  }
+}
+
+.hero-zoom {
+  animation: pitch-breathe 18s ease-in-out infinite;
+}
+
+.progress-fill {
+  transition: width 400ms ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .floodlight,
+  .hero-zoom,
+  .progress-fill {
+    animation: none;
+    transition: none;
+  }
+
+  button {
+    transition: none;
+  }
+}
