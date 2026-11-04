@@ -24,9 +24,9 @@ npm run dev
 
 Open `http://localhost:3000`.
 
-The insights dashboard calls `/api/v1/*`, which Next.js proxies to
-`PULSEIQ_API_ORIGIN` (default `http://127.0.0.1:8000`). Start the FastAPI
-server before opening `/home`.
+The insights dashboard and AI Companion call `/api/v1/*`, which Next.js
+proxies to `PULSEIQ_API_ORIGIN` (default `http://127.0.0.1:8000`). Start the
+FastAPI server before opening `/home` or `/companion`.
 
 ## Checks
 

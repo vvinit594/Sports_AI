@@ -11,6 +11,16 @@ export function toAudienceLevel(level: ExperienceLevel | null): AudienceLevel {
   return "beginner";
 }
 
+export function audienceVisibleLabel(level: AudienceLevel): string {
+  if (level === "advanced") {
+    return "Advanced";
+  }
+  if (level === "casual") {
+    return "Intermediate";
+  }
+  return "Beginner";
+}
+
 export function displayNameOrFallback(name: string): string {
   const trimmed = name.trim();
   return trimmed || "Player";

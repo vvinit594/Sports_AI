@@ -13,6 +13,7 @@ import { displayNameOrFallback } from "@/lib/personalization";
 const links = [
   { href: "/home", label: "Home" },
   { href: "/matches", label: "Matches" },
+  { href: "/companion", label: "AI Companion" },
   { href: "/profile", label: "My Profile" },
 ];
 
@@ -41,7 +42,7 @@ export function AppNav() {
                 key={link.href}
                 href={link.href}
                 aria-current={active ? "page" : undefined}
-                className={`hover:text-white ${active ? "text-white" : ""}`}
+                className={`hover:text-white ${active ? "text-[var(--red)]" : ""}`}
               >
                 {link.label}
               </Link>
@@ -69,15 +70,22 @@ export function AppNav() {
       </div>
       {open ? (
         <nav className="space-y-1 px-5 pb-4 md:hidden">
-          {links.map((link) => (
-            <Link
-              key={link.href}
-              href={link.href}
-              className="block rounded-2xl px-4 py-3 text-white/90 hover:bg-white/5"
-            >
-              {link.label}
-            </Link>
-          ))}
+          {links.map((link) => {
+            const active =
+              pathname === link.href || pathname.startsWith(`${link.href}/`);
+            return (
+              <Link
+                key={link.href}
+                href={link.href}
+                aria-current={active ? "page" : undefined}
+                className={`block rounded-2xl px-4 py-3 hover:bg-white/5 ${
+                  active ? "text-[var(--red)]" : "text-white/90"
+                }`}
+              >
+                {link.label}
+              </Link>
+            );
+          })}
         </nav>
       ) : null}
     </header>
