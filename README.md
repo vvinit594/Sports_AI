@@ -71,7 +71,7 @@ python -m uvicorn app.main:create_app --factory --reload --host 127.0.0.1 --port
 
 OpenAPI: `http://127.0.0.1:8000/docs`
 
-## Run the frontend (Phase 4.1)
+## Run the frontend (Phase 4.1 / 4.2)
 
 ```powershell
 cd frontend
@@ -79,7 +79,11 @@ npm install
 npm run dev
 ```
 
-Open `http://localhost:3000`. Use **Let's play** to start onboarding.
+Open `http://localhost:3000`. Use **Let's play** to start onboarding, then
+**Enter dashboard** for Personalized Insights.
+
+The dashboard proxies `/api/v1` to the FastAPI process
+(`PULSEIQ_API_ORIGIN`, default `http://127.0.0.1:8000`). Start the API first.
 
 See `docs/API.md` and `docs/GENAI_EXPLANATIONS.md`.
 

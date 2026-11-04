@@ -1,7 +1,8 @@
-# PulseIQ frontend — Phase 4.1
+# PulseIQ frontend — Phase 4.1 / 4.2
 
-Landing page and onboarding experience. This milestone does not call the
-FastAPI backend or render a match dashboard.
+Landing page, onboarding, and the Personalized Insights dashboard. The
+dashboard reads the Phase 3 FastAPI catalog through a Next.js rewrite. The
+full Match Intelligence view is not part of this milestone.
 
 ## Stack
 
@@ -22,6 +23,10 @@ npm run dev
 ```
 
 Open `http://localhost:3000`.
+
+The insights dashboard calls `/api/v1/*`, which Next.js proxies to
+`PULSEIQ_API_ORIGIN` (default `http://127.0.0.1:8000`). Start the FastAPI
+server before opening `/home`.
 
 ## Checks
 

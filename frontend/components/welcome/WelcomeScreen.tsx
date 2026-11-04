@@ -47,11 +47,14 @@ export function WelcomeScreen() {
             ) : null}
           </dl>
           <div className="mt-10 flex flex-wrap justify-center gap-3">
-            <Link href="/">
-              <Button variant="outline">Back to home</Button>
+            <Link href="/home">
+              <Button>Enter dashboard</Button>
             </Link>
             <Link href="/onboarding">
               <Button variant="secondary">Edit setup</Button>
+            </Link>
+            <Link href="/">
+              <Button variant="outline">Back to landing</Button>
             </Link>
           </div>
         </motion.div>

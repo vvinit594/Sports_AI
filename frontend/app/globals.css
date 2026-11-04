@@ -12,6 +12,7 @@
   --red-deep: #c81e2c;
   --gold: #f3d36a;
   --pitch: #1f8a4d;
+  --electric: #3dff8a;
   --glow: rgba(255, 59, 74, 0.45);
   --radius-sm: 10px;
   --radius-md: 16px;
@@ -31,6 +32,7 @@
   --color-red-deep: var(--red-deep);
   --color-gold: var(--gold);
   --color-pitch: var(--pitch);
+  --color-electric: var(--electric);
   --font-display: var(--font-oswald);
   --font-sans: var(--font-jakarta);
 }

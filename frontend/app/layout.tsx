@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Oswald, Plus_Jakarta_Sans } from "next/font/google";
 
 import { OnboardingProvider } from "@/components/providers/OnboardingProvider";
+import { ProgressProvider } from "@/components/providers/ProgressProvider";
 
 import "./globals.css";
 
@@ -30,7 +31,9 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className={`${display.variable} ${body.variable} antialiased`}>
-        <OnboardingProvider>{children}</OnboardingProvider>
+        <OnboardingProvider>
+          <ProgressProvider>{children}</ProgressProvider>
+        </OnboardingProvider>
       </body>
     </html>
   );
