@@ -14,6 +14,7 @@ const links = [
   { href: "/home", label: "Home" },
   { href: "/matches", label: "Matches" },
   { href: "/companion", label: "AI Companion" },
+  { href: "/live", label: "Live Intelligence" },
   { href: "/profile", label: "My Profile" },
 ];
 

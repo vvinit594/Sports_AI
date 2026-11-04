@@ -8,20 +8,20 @@ const LEVELS: AudienceLevel[] = ["beginner", "casual", "advanced"];
 type ExperienceLevelSelectorProps = {
   value: AudienceLevel;
   onChange: (level: AudienceLevel) => void;
+  note?: string;
 };
 
 export function ExperienceLevelSelector({
   value,
   onChange,
+  note = "Temporary for this chat. It does not change your saved profile.",
 }: ExperienceLevelSelectorProps) {
   return (
     <fieldset>
       <legend className="text-xs uppercase tracking-[0.16em] text-muted">
         Explanation style
       </legend>
-      <p className="mt-1 text-[11px] text-muted">
-        Temporary for this chat. It does not change your saved profile.
-      </p>
+      <p className="mt-1 text-[11px] text-muted">{note}</p>
       <div className="mt-2 flex flex-wrap gap-2">
         {LEVELS.map((level) => {
           const active = level === value;

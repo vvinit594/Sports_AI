@@ -75,9 +75,19 @@ export function getMatch(matchId: string) {
   return apiFetch<MatchDetail>(`/matches/${encodeURIComponent(matchId)}`);
 }
 
-export function getMatchState(matchId: string, sequence?: number) {
-  const query =
-    sequence === undefined ? "" : `?sequence=${encodeURIComponent(String(sequence))}`;
+export function getMatchState(
+  matchId: string,
+  sequence?: number,
+  options?: { full?: boolean },
+) {
+  const params = new URLSearchParams();
+  if (sequence !== undefined) {
+    params.set("sequence", String(sequence));
+  }
+  if (options?.full) {
+    params.set("full", "true");
+  }
+  const query = params.toString() ? `?${params.toString()}` : "";
   return apiFetch<MatchStateResponse>(
     `/matches/${encodeURIComponent(matchId)}/state${query}`,
   );

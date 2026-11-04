@@ -9,6 +9,7 @@ import { AppNav } from "@/components/app/AppNav";
 export function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const companion = pathname.startsWith("/companion");
+  const live = pathname.startsWith("/live");
 
   if (companion) {
     return (
@@ -22,7 +23,13 @@ export function AppShell({ children }: { children: ReactNode }) {
   return (
     <div className="min-h-[100svh] bg-[var(--ink)]">
       <AppNav />
-      <div className="mx-auto max-w-6xl px-5 py-8 md:px-8">{children}</div>
+      <div
+        className={`mx-auto px-5 py-8 md:px-8 ${
+          live ? "max-w-[90rem]" : "max-w-6xl"
+        }`}
+      >
+        {children}
+      </div>
       <AppFooter />
     </div>
   );

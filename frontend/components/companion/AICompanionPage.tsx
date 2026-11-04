@@ -6,6 +6,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import { ChatHeader } from "@/components/companion/ChatHeader";
 import { ChatSidebar } from "@/components/companion/ChatSidebar";
 import { ChatWelcome } from "@/components/companion/ChatWelcome";
+import { CompanionHandoff } from "@/components/companion/CompanionHandoff";
 import { CompanionProvider, useCompanion } from "@/hooks/useCompanion";
 import { MatchContextPanel } from "@/components/companion/MatchContextPanel";
 import { MatchSelector } from "@/components/companion/MatchSelector";
@@ -16,6 +17,7 @@ import { SuggestedQuestions } from "@/components/companion/SuggestedQuestions";
 export function AICompanionPage() {
   return (
     <CompanionProvider>
+      <CompanionHandoff />
       <CompanionLayout />
     </CompanionProvider>
   );

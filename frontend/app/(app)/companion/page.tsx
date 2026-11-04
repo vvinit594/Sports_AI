@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { Suspense } from "react";
 
 import { AICompanionPage } from "@/components/companion/AICompanionPage";
 
@@ -8,5 +9,9 @@ export const metadata: Metadata = {
 };
 
 export default function CompanionRoute() {
-  return <AICompanionPage />;
+  return (
+    <Suspense fallback={<p className="p-6 text-sm text-muted">Opening companion…</p>}>
+      <AICompanionPage />
+    </Suspense>
+  );
 }

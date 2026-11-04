@@ -87,6 +87,11 @@ export type MatchState = {
   match_complete: boolean;
   is_active_prediction_state: boolean;
   outcome: OutcomeInfo;
+  legal_balls?: number;
+  total_deliveries?: number;
+  innings_just_completed?: boolean;
+  innings_completion_reason?: string | null;
+  match_completion_reason?: string | null;
 };
 
 export type MatchStateResponse = {
@@ -95,6 +100,7 @@ export type MatchStateResponse = {
   requested_sequence: number | null;
   latest_sequence: number;
   state: MatchState;
+  states?: MatchState[] | null;
 };
 
 export type ModelMetadataView = {
@@ -106,6 +112,8 @@ export type ModelMetadataView = {
   trained_at: string;
   n_train_rows: number;
   notes: string[];
+  fitted_split?: string;
+  validation_role?: string;
 };
 
 export type ProbabilityPredictionView = {
