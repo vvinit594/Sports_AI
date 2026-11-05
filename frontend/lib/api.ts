@@ -41,7 +41,7 @@ async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
     throw new PulseApiError(
       0,
       "network_error",
-      "Could not reach the PulseIQ API. Start the FastAPI server on port 8000.",
+      "Could not reach the PulseIQ API.",
     );
   }
 

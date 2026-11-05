@@ -1,5 +1,6 @@
 "use client";
 
+import { DoorOpen } from "lucide-react";
 import Link from "next/link";
 
 import { AvatarBadge } from "@/components/app/AvatarBadge";
@@ -52,6 +53,12 @@ export function ProfileView() {
           </Link>
           <Link href="/home">
             <Button variant="outline">Back to insights</Button>
+          </Link>
+          <Link href="/" aria-label="Exit to the PulseIQ landing page">
+            <Button variant="outline">
+              <DoorOpen size={16} aria-hidden />
+              Exit
+            </Button>
           </Link>
         </div>
       </Card>

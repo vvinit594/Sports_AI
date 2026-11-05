@@ -25,8 +25,13 @@ npm run dev
 Open `http://localhost:3000`.
 
 The insights dashboard, AI Companion and Live Intelligence call `/api/v1/*`,
-which Next.js proxies to `PULSEIQ_API_ORIGIN` (default `http://127.0.0.1:8000`).
-Start the FastAPI server before opening `/home`, `/companion` or `/live`.
+which Next.js proxies to `PULSEIQ_API_ORIGIN`. In development the rewrite
+falls back to `http://127.0.0.1:8000` if the variable is unset. Start the
+FastAPI server before opening `/home`, `/companion` or `/live`.
+
+Production frontend hosts must set `PULSEIQ_API_ORIGIN` as a **server-side**
+environment variable (not `NEXT_PUBLIC_*`). `next build` and `next start`
+fail if it is missing so production never silently proxies to localhost.
 
 ## Checks
 

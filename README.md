@@ -82,8 +82,15 @@ npm run dev
 Open `http://localhost:3000`. Use **Let's play** to start onboarding, then
 **Enter dashboard** for Personalized Insights.
 
-The dashboard proxies `/api/v1` to the FastAPI process
-(`PULSEIQ_API_ORIGIN`, default `http://127.0.0.1:8000`). Start the API first.
+The dashboard proxies `/api/v1` to the FastAPI process via
+`PULSEIQ_API_ORIGIN`. In development the rewrite falls back to
+`http://127.0.0.1:8000` if the variable is unset. Start the API first.
+
+For production frontend hosts, set `PULSEIQ_API_ORIGIN` as a **server-side**
+environment variable (Vercel/Netlify → Project settings → Environment
+Variables, available at **build** time). Do not use `NEXT_PUBLIC_*`.
+`next build` and `next start` fail if it is missing so production never
+silently proxies to localhost.
 
 See `docs/API.md` and `docs/GENAI_EXPLANATIONS.md`.
 
