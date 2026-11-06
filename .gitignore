@@ -34,6 +34,7 @@ data/processed/**
 backend/models/artifacts/**
 !backend/models/artifacts/.gitkeep
 *.joblib
+!backend/models/artifacts/chase_wp_heuristic_chase_wp_v1.joblib
 
 # Editor / OS
 .idea/
