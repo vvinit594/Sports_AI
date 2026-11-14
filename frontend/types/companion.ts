@@ -13,6 +13,9 @@ export type ChatMessage = {
   response?: ExplanationResponse;
   error?: string;
   retryText?: string;
+  retryMatchId?: string | null;
+  retrySequence?: number | null;
+  retryAudience?: AudienceLevel;
 };
 
 export type Conversation = {

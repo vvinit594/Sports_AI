@@ -20,8 +20,17 @@ from app.services.explanations.prompts import (
 from app.services.explanations.providers.factory import (
     build_provider,
     provider_is_configured,
+    resolved_llm_model,
 )
-from app.services.explanations.providers.gemini import GeminiProvider
+from app.services.explanations.providers.gemini import (
+    DEFAULT_GEMINI_MODEL,
+    SHUTDOWN_GEMINI_MODELS,
+    GeminiProvider,
+    extract_gemini_text,
+    is_shutdown_gemini_model,
+    resolve_gemini_model,
+    safe_gemini_fallback_model,
+)
 from app.services.explanations.providers.http import JsonHttpClient
 from app.services.explanations.providers.mock import MockLLMProvider
 from app.services.explanations.providers.openai import OpenAICompatibleProvider
@@ -328,3 +337,427 @@ def _valid_payload() -> dict[str, object]:
         "match_context": "Beta are chasing",
         "key_factors": ["score is 10 for 1"],
     }
+
+
+def _gemini_success_body(text: str | None = None) -> dict[str, object]:
+    return {
+        "candidates": [
+            {"content": {"parts": [{"text": text or json.dumps(_valid_payload())}]}}
+        ]
+    }
+
+
+def _gemini_provider(
+    transport: httpx.BaseTransport,
+    *,
+    model_name: str = "gemini-test",
+    fallback_model_name: str | None = None,
+    max_retries: int = 0,
+) -> GeminiProvider:
+    return GeminiProvider(
+        api_key="test-key",
+        model_name=model_name,
+        base_url="https://example.test/gemini",
+        timeout_seconds=1,
+        max_retries=max_retries,
+        fallback_model_name=fallback_model_name,
+        client=JsonHttpClient(
+            timeout_seconds=1, max_retries=max_retries, transport=transport
+        ),
+    )
+
+
+def test_resolve_gemini_model_remaps_placeholder_and_shutdown_ids():
+    assert DEFAULT_GEMINI_MODEL == "gemini-3.8-flash"
+    assert DEFAULT_GEMINI_MODEL not in SHUTDOWN_GEMINI_MODELS
+    assert resolve_gemini_model("mock-explanations-v1") == DEFAULT_GEMINI_MODEL
+    assert resolve_gemini_model("") == DEFAULT_GEMINI_MODEL
+    assert resolve_gemini_model("models/gemini-2.0-flash") == DEFAULT_GEMINI_MODEL
+    assert resolve_gemini_model("gemini-2.0-flash") == DEFAULT_GEMINI_MODEL
+    assert resolve_gemini_model("gemini-2.0-flash-lite") == DEFAULT_GEMINI_MODEL
+    assert resolve_gemini_model("models/gemini-2.5-flash") == "gemini-2.5-flash"
+    assert resolve_gemini_model("gemini-2.5-flash") == "gemini-2.5-flash"
+    assert resolve_gemini_model("gemini-3.8-flash") == "gemini-3.8-flash"
+    assert resolve_gemini_model("gemini-3.6-flash") == "gemini-3.6-flash"
+
+
+def test_resolver_never_selects_shutdown_gemini_20_flash():
+    samples = [
+        None,
+        "",
+        "mock",
+        "mock-explanations-v1",
+        "gemini-2.0-flash",
+        "models/gemini-2.0-flash",
+        "GEMINI-2.0-FLASH",
+        "gemini-2.0-flash-001",
+        "gemini-2.0-flash-lite",
+        "gemini-2.5-flash",
+        "gemini-3.8-flash",
+        "gemini-3.6-flash",
+    ]
+    resolved = [resolve_gemini_model(value) for value in samples]
+    fallbacks = [
+        safe_gemini_fallback_model(resolve_gemini_model(value) or DEFAULT_GEMINI_MODEL)
+        for value in samples
+    ]
+    for value in resolved + fallbacks:
+        if value is None:
+            continue
+        assert value != "gemini-2.0-flash"
+        assert not is_shutdown_gemini_model(value)
+    settings_cases = [
+        {
+            "llm_provider": "gemini",
+            "llm_model": model,
+            "gemini_api_key": "test-key",
+        }
+        for model in (
+            "mock-explanations-v1",
+            "gemini-2.0-flash",
+            "gemini-2.5-flash",
+            "gemini-3.8-flash",
+        )
+    ]
+    for payload in settings_cases:
+        provider = build_provider(Settings.model_validate(payload))
+        assert provider.model_name != "gemini-2.0-flash"
+        assert not is_shutdown_gemini_model(provider.model_name)
+        assert getattr(provider, "_fallback_model_name", None) != "gemini-2.0-flash"
+
+
+def test_explicit_gemini_25_flash_is_not_silently_remapped():
+    settings = Settings.model_validate(
+        {
+            "llm_provider": "gemini",
+            "llm_model": "gemini-2.5-flash",
+            "gemini_api_key": "test-key",
+        }
+    )
+    provider = build_provider(settings)
+    assert provider.model_name == "gemini-2.5-flash"
+    assert provider._fallback_model_name == DEFAULT_GEMINI_MODEL
+
+
+def test_shutdown_model_cannot_be_used_as_fallback():
+    seen: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        url = str(request.url)
+        seen.append(url)
+        if "gemini-2.0-flash" in url:
+            raise AssertionError("shutdown Gemini 2.0 Flash must not be requested")
+        if "gemini-2.5-flash" in url:
+            return httpx.Response(
+                404,
+                json={"error": {"message": "models/gemini-2.5-flash is not found"}},
+            )
+        return httpx.Response(200, json=_gemini_success_body())
+
+    provider = _gemini_provider(
+        httpx.MockTransport(handler),
+        model_name="gemini-2.5-flash",
+        fallback_model_name="gemini-2.0-flash",
+    )
+    assert provider.model_name == "gemini-2.5-flash"
+    assert provider._fallback_model_name == DEFAULT_GEMINI_MODEL
+    assert provider._fallback_model_name != "gemini-2.0-flash"
+    raw = provider.generate_json("s", "u")
+    assert json.loads(raw)["summary"] == "A short summary"
+    assert provider.model_name == DEFAULT_GEMINI_MODEL
+    assert any(f"models/{DEFAULT_GEMINI_MODEL}:generateContent" in url for url in seen)
+    assert not any("gemini-2.0-flash" in url for url in seen)
+
+
+def test_provider_factory_remaps_placeholder_gemini_model():
+    settings = Settings.model_validate(
+        {
+            "llm_provider": "gemini",
+            "llm_model": "mock-explanations-v1",
+            "gemini_api_key": "test-key",
+        }
+    )
+    provider = build_provider(settings)
+    assert provider.name == "gemini"
+    assert provider.model_name == DEFAULT_GEMINI_MODEL
+    assert resolved_llm_model(settings) == DEFAULT_GEMINI_MODEL
+
+
+def test_gemini_request_uses_current_rest_schema():
+    captured: dict[str, object] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["url"] = str(request.url)
+        captured["api_key_header"] = request.headers.get("x-goog-api-key")
+        captured["body"] = json.loads(request.content)
+        return httpx.Response(200, json=_gemini_success_body())
+
+    provider = _gemini_provider(
+        httpx.MockTransport(handler), model_name=DEFAULT_GEMINI_MODEL
+    )
+    raw = provider.generate_json("system-rules", "user-context")
+    assert json.loads(raw)["summary"] == "A short summary"
+    assert captured["url"] == (
+        f"https://example.test/gemini/models/{DEFAULT_GEMINI_MODEL}:generateContent"
+    )
+    assert captured["api_key_header"] == "test-key"
+    body = captured["body"]
+    assert isinstance(body, dict)
+    assert body["systemInstruction"]["parts"][0]["text"] == "system-rules"
+    assert body["contents"][0]["role"] == "user"
+    assert body["contents"][0]["parts"][0]["text"] == "user-context"
+    assert body["generationConfig"]["responseMimeType"] == "application/json"
+
+
+def test_gemini_valid_response():
+    provider = _gemini_provider(
+        httpx.MockTransport(
+            lambda _request: httpx.Response(200, json=_gemini_success_body())
+        )
+    )
+    parsed = parse_explanation_json(provider.generate_json("s", "u"))
+    assert parsed.summary == "A short summary"
+
+
+def test_gemini_invalid_api_key_is_not_retried():
+    calls = {"count": 0}
+
+    def handler(_request: httpx.Request) -> httpx.Response:
+        calls["count"] += 1
+        return httpx.Response(
+            403,
+            json={
+                "error": {"message": "API key not valid", "status": "PERMISSION_DENIED"}
+            },
+        )
+
+    provider = _gemini_provider(httpx.MockTransport(handler), max_retries=2)
+    with pytest.raises(ProviderError) as exc:
+        provider.generate_json("s", "u")
+    assert exc.value.code == "invalid_credentials"
+    assert calls["count"] == 1
+
+
+def test_gemini_unsupported_model():
+    def handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            404,
+            json={
+                "error": {
+                    "message": "models/mock-explanations-v1 is not found",
+                    "status": "NOT_FOUND",
+                }
+            },
+        )
+
+    provider = _gemini_provider(httpx.MockTransport(handler), fallback_model_name=None)
+    with pytest.raises(ProviderError) as exc:
+        provider.generate_json("s", "u")
+    assert exc.value.code == "unsupported_model"
+    assert exc.value.detail is not None
+    assert "mock-explanations-v1" in exc.value.detail
+    assert "test-key" not in exc.value.detail
+
+
+def test_gemini_falls_back_when_configured_model_is_missing():
+    def handler(request: httpx.Request) -> httpx.Response:
+        if "retired-model" in str(request.url):
+            return httpx.Response(
+                404,
+                json={"error": {"message": "models/retired-model is not found"}},
+            )
+        return httpx.Response(200, json=_gemini_success_body())
+
+    provider = _gemini_provider(
+        httpx.MockTransport(handler),
+        model_name="retired-model",
+        fallback_model_name=DEFAULT_GEMINI_MODEL,
+    )
+    raw = provider.generate_json("s", "u")
+    assert json.loads(raw)["summary"] == "A short summary"
+    assert provider.model_name == DEFAULT_GEMINI_MODEL
+
+
+def test_gemini_rate_limit():
+    provider = _gemini_provider(
+        httpx.MockTransport(
+            lambda _request: httpx.Response(429, json={"error": "rate"})
+        )
+    )
+    with pytest.raises(ProviderError) as exc:
+        provider.generate_json("s", "u")
+    assert exc.value.code == "rate_limited"
+    assert exc.value.status_code == 429
+
+
+def test_gemini_timeout():
+    def handler(request: httpx.Request) -> httpx.Response:
+        raise httpx.TimeoutException("slow", request=request)
+
+    provider = _gemini_provider(httpx.MockTransport(handler))
+    with pytest.raises(ProviderError) as exc:
+        provider.generate_json("s", "u")
+    assert exc.value.code == "timeout"
+    assert exc.value.status_code == 504
+
+
+def test_gemini_server_error():
+    provider = _gemini_provider(
+        httpx.MockTransport(
+            lambda _request: httpx.Response(500, json={"error": "boom"})
+        )
+    )
+    with pytest.raises(ProviderError) as exc:
+        provider.generate_json("s", "u")
+    assert exc.value.code == "provider_error"
+
+
+def test_gemini_empty_response():
+    body = {"candidates": [{"content": {"parts": [{"text": "   "}]}}]}
+    with pytest.raises(ProviderError) as exc:
+        extract_gemini_text(body)
+    assert exc.value.code == "malformed_output"
+
+
+def test_gemini_malformed_response():
+    with pytest.raises(ProviderError) as exc:
+        extract_gemini_text({"foo": "bar"})
+    assert exc.value.code == "malformed_output"
+
+
+def test_gemini_safety_blocked_response():
+    with pytest.raises(ProviderError) as exc:
+        extract_gemini_text(
+            {
+                "promptFeedback": {"blockReason": "SAFETY"},
+                "candidates": [],
+            }
+        )
+    assert exc.value.code == "content_blocked"
+
+
+def test_gemini_reads_text_from_non_thought_parts():
+    text = extract_gemini_text(
+        {
+            "candidates": [
+                {
+                    "content": {
+                        "parts": [
+                            {"thought": True},
+                            {"text": json.dumps(_valid_payload())},
+                        ]
+                    }
+                }
+            ]
+        }
+    )
+    assert json.loads(text)["summary"] == "A short summary"
+
+
+def test_http_retries_transient_then_succeeds():
+    calls = {"count": 0}
+
+    def handler(_request: httpx.Request) -> httpx.Response:
+        calls["count"] += 1
+        if calls["count"] == 1:
+            return httpx.Response(429, json={"error": "rate"})
+        return httpx.Response(200, json={"ok": True})
+
+    client = JsonHttpClient(
+        timeout_seconds=1,
+        max_retries=1,
+        transport=httpx.MockTransport(handler),
+    )
+    body = client.post_json("https://example.test/llm", headers={}, payload={})
+    assert body == {"ok": True}
+    assert calls["count"] == 2
+
+
+def test_http_does_not_retry_invalid_request():
+    calls = {"count": 0}
+
+    def handler(_request: httpx.Request) -> httpx.Response:
+        calls["count"] += 1
+        return httpx.Response(400, json={"error": {"message": "bad payload"}})
+
+    client = JsonHttpClient(
+        timeout_seconds=1,
+        max_retries=2,
+        transport=httpx.MockTransport(handler),
+    )
+    with pytest.raises(ProviderError) as exc:
+        client.post_json("https://example.test/llm", headers={}, payload={})
+    assert exc.value.code == "invalid_request"
+    assert calls["count"] == 1
+
+
+def test_explanation_api_all_audience_levels():
+    match, states = sample_chase_match("exp-levels")
+    latest = states[-1].sequence
+    client = api_client(matches=[match])
+    for audience in ("beginner", "casual", "advanced"):
+        response = client.post(
+            "/api/v1/matches/exp-levels/explanations",
+            json={"audience_level": audience, "sequence": latest},
+        )
+        assert response.status_code == 200
+        body = response.json()
+        assert body["audience_level"] == audience
+        assert body["source_match_id"] == "exp-levels"
+        assert body["source_sequence"] == latest
+        assert body["grounded"] is True
+        assert body["summary"]
+        assert body["what_happened"]
+        assert body["why_it_matters"]
+        assert body["match_context"]
+        assert body["key_factors"]
+        assert body["model_provider"] == "mock"
+
+
+def test_explanation_unknown_match_is_structured():
+    client = api_client()
+    response = client.post(
+        "/api/v1/matches/does-not-exist/explanations",
+        json={"audience_level": "beginner"},
+    )
+    assert response.status_code == 404
+    body = response.json()
+    assert body["code"] == "match_not_found"
+    assert "error" in body
+    assert "detail" in body
+
+
+def test_explanation_unknown_sequence_is_structured():
+    match, states = sample_chase_match("exp-missing-seq")
+    client = api_client(matches=[match])
+    response = client.post(
+        "/api/v1/matches/exp-missing-seq/explanations",
+        json={"audience_level": "beginner", "sequence": states[-1].sequence + 50},
+    )
+    assert response.status_code == 404
+    assert response.json()["code"] == "sequence_not_found"
+
+
+def test_explanation_provider_failure_is_structured():
+    match, _ = sample_chase_match("exp-fail")
+    client = api_client(
+        matches=[match],
+        provider=ScriptedProvider(
+            ProviderError(
+                "The configured LLM model is not available",
+                code="unsupported_model",
+                detail="models/mock-explanations-v1 is not found",
+            )
+        ),
+    )
+    response = client.post(
+        "/api/v1/matches/exp-fail/explanations",
+        json={"audience_level": "casual"},
+    )
+    assert response.status_code == 502
+    body = response.json()
+    assert body["error"] == "The configured LLM model is not available"
+    assert body["code"] == "unsupported_model"
+    assert body["detail"] == "models/mock-explanations-v1 is not found"
+    assert "test-key" not in response.text
+    assert "GEMINI_API_KEY" not in response.text

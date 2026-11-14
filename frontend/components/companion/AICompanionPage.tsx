@@ -83,7 +83,7 @@ function CompanionLayout() {
             />
           ) : (
             <>
-              <MessageList messages={messages} pending={pending} onRetry={(text) => void retry(text)} />
+              <MessageList messages={messages} pending={pending} onRetry={(id) => void retry(id)} />
               <div className="px-4 pb-4">
                 <SuggestedQuestions
                   level={active?.audienceLevel ?? "beginner"}

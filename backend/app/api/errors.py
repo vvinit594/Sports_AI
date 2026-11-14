@@ -28,14 +28,14 @@ def register_exception_handlers(app: FastAPI) -> None:
     @app.exception_handler(ProviderError)
     async def provider_error(_request: Request, exc: ProviderError) -> JSONResponse:
         logger.warning("provider error code=%s", exc.code)
-        return _error(exc.status_code, str(exc), exc.code)
+        return _error(exc.status_code, str(exc), exc.code, exc.detail)
 
     @app.exception_handler(ExplanationError)
     async def explanation_error(
         _request: Request, exc: ExplanationError
     ) -> JSONResponse:
         logger.warning("explanation error code=%s", exc.code)
-        return _error(exc.status_code, str(exc), exc.code)
+        return _error(exc.status_code, str(exc), exc.code, exc.detail)
 
     @app.exception_handler(PulseIQError)
     async def domain_error(_request: Request, exc: PulseIQError) -> JSONResponse:

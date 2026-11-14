@@ -63,16 +63,23 @@ class ExplanationError(PulseIQError):
         *,
         code: str = "explanation_error",
         status_code: int = 400,
+        detail: str | None = None,
     ):
         super().__init__(message)
         self.code = code
         self.status_code = status_code
+        self.detail = detail
 
 
 class ProviderError(ExplanationError):
     """Raised when the configured LLM provider fails."""
 
     def __init__(
-        self, message: str, *, code: str = "provider_error", status_code: int = 502
+        self,
+        message: str,
+        *,
+        code: str = "provider_error",
+        status_code: int = 502,
+        detail: str | None = None,
     ):
-        super().__init__(message, code=code, status_code=status_code)
+        super().__init__(message, code=code, status_code=status_code, detail=detail)

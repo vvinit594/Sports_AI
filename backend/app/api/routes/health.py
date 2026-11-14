@@ -6,7 +6,10 @@ from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 
 from app.schemas.api import HealthResponse, ReadinessResponse
-from app.services.explanations.providers.factory import provider_is_configured
+from app.services.explanations.providers.factory import (
+    provider_is_configured,
+    resolved_llm_model,
+)
 
 router = APIRouter(tags=["health"])
 
@@ -31,6 +34,7 @@ def ready(request: Request) -> ReadinessResponse | JSONResponse:
         model_loaded=model_loaded,
         llm_provider=settings.normalized_llm_provider(),
         llm_configured=llm_configured,
+        llm_model=resolved_llm_model(settings),
     )
     if not is_ready:
         return JSONResponse(status_code=503, content=body.model_dump())

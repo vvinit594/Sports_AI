@@ -5,12 +5,13 @@ import { useEffect, useRef } from "react";
 
 import { Logo } from "@/components/brand/Logo";
 import { Button } from "@/components/ui/Button";
+import { canRetryMessage } from "@/lib/companion-retry";
 import type { ChatMessage } from "@/types/companion";
 
 type MessageListProps = {
   messages: ChatMessage[];
   pending: boolean;
-  onRetry: (text: string) => void;
+  onRetry: (messageId: string) => void;
 };
 
 export function MessageList({ messages, pending, onRetry }: MessageListProps) {
@@ -34,6 +35,7 @@ export function MessageList({ messages, pending, onRetry }: MessageListProps) {
             key={message.id}
             message={message}
             reduceMotion={Boolean(reduceMotion)}
+            pending={pending}
             onRetry={onRetry}
           />
         ),
@@ -68,11 +70,13 @@ function UserMessage({
 function AssistantMessage({
   message,
   reduceMotion,
+  pending,
   onRetry,
 }: {
   message: ChatMessage;
   reduceMotion: boolean;
-  onRetry: (text: string) => void;
+  pending: boolean;
+  onRetry: (messageId: string) => void;
 }) {
   const explanation = message.response;
   return (
@@ -116,12 +120,20 @@ function AssistantMessage({
       {message.kind === "knowledge" ? (
         <p className="mt-3 text-[11px] text-muted">Curated learning content · not match-model output</p>
       ) : null}
-      {message.error && message.retryText ? (
+      {canRetryMessage(message, pending) ? (
         <div className="mt-3">
-          <Button variant="outline" onClick={() => onRetry(message.retryText ?? "")}>
+          <Button
+            variant="outline"
+            disabled={pending}
+            onClick={() => onRetry(message.id)}
+          >
             Retry
           </Button>
         </div>
+      ) : message.error ? (
+        <p className="mt-3 text-xs text-muted">
+          This explanation failed and is not retryable from the current message.
+        </p>
       ) : null}
       <time className="mt-2 block text-[11px] text-muted" dateTime={message.createdAt}>
         {new Date(message.createdAt).toLocaleTimeString()}

@@ -49,6 +49,7 @@ def test_readiness_endpoint_ready():
     assert body["data_source"] == "historical_cricsheet"
     assert body["model_loaded"] is True
     assert body["llm_provider"] == "mock"
+    assert body["llm_model"] == "mock-explanations-v1"
     assert "GEMINI_API_KEY" not in response.text
     assert "OPENAI_API_KEY" not in response.text
 

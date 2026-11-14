@@ -7,7 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint .",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "node --experimental-strip-types --test lib/companion-errors.test.ts lib/companion-retry.test.ts"
   },
   "dependencies": {
     "framer-motion": "^14.9.0",

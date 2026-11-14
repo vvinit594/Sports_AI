@@ -120,7 +120,7 @@ class LLMExplanationPayload(FrozenExplanationModel):
             return ()
         if isinstance(value, str):
             value = [value]
-        if not isinstance(value, (list, tuple)):
+        if not isinstance(value, list | tuple):
             raise ValueError("key_factors must be a list of strings")
         cleaned = tuple(
             item.strip() for item in value if isinstance(item, str) and item.strip()

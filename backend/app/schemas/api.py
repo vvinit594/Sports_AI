@@ -34,6 +34,7 @@ class ReadinessResponse(FrozenApiModel):
     model_loaded: bool
     llm_provider: str
     llm_configured: bool
+    llm_model: str
 
 
 class MatchSummary(FrozenApiModel):

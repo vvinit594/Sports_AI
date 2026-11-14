@@ -5,7 +5,11 @@ from __future__ import annotations
 from app.core.config import Settings
 from app.core.exceptions import ProviderError
 from app.services.explanations.providers.base import LLMProvider
-from app.services.explanations.providers.gemini import GeminiProvider
+from app.services.explanations.providers.gemini import (
+    GeminiProvider,
+    resolve_gemini_model,
+    safe_gemini_fallback_model,
+)
 from app.services.explanations.providers.mock import MockLLMProvider
 from app.services.explanations.providers.openai import OpenAICompatibleProvider
 
@@ -21,12 +25,14 @@ def build_provider(settings: Settings) -> LLMProvider:
                 code="provider_unavailable",
                 status_code=503,
             )
+        model_name = resolve_gemini_model(settings.llm_model)
         return GeminiProvider(
             api_key=settings.gemini_api_key,
-            model_name=settings.llm_model,
+            model_name=model_name,
             base_url=settings.gemini_base_url,
             timeout_seconds=settings.llm_timeout_seconds,
             max_retries=settings.llm_max_retries,
+            fallback_model_name=safe_gemini_fallback_model(model_name),
         )
     if name in {"openai", "openai_compatible"}:
         if not settings.openai_api_key:
@@ -58,3 +64,9 @@ def provider_is_configured(settings: Settings) -> bool:
     if name in {"openai", "openai_compatible"}:
         return bool(settings.openai_api_key)
     return False
+
+
+def resolved_llm_model(settings: Settings) -> str:
+    if settings.normalized_llm_provider() == "gemini":
+        return resolve_gemini_model(settings.llm_model)
+    return settings.llm_model

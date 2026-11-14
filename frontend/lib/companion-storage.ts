@@ -132,6 +132,19 @@ function sanitizeMessage(value: unknown): ChatMessage | null {
     response: isExplanation(record.response) ? record.response : undefined,
     error: typeof record.error === "string" ? record.error : undefined,
     retryText: typeof record.retryText === "string" ? record.retryText : undefined,
+    retryMatchId:
+      typeof record.retryMatchId === "string" && record.retryMatchId
+        ? record.retryMatchId
+        : undefined,
+    retrySequence:
+      typeof record.retrySequence === "number" && Number.isFinite(record.retrySequence)
+        ? record.retrySequence
+        : record.retrySequence === null
+          ? null
+          : undefined,
+    retryAudience: isAudience(record.retryAudience)
+      ? record.retryAudience
+      : undefined,
   };
 }
 

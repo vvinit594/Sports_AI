@@ -24,6 +24,13 @@ import {
   resolveIntent,
   UNSUPPORTED_COPY,
 } from "@/lib/companion-intent";
+import { companionErrorMessage } from "@/lib/companion-errors";
+import {
+  attachRetrySnapshot,
+  replaceMessageById,
+  snapshotFromFailedMessage,
+  type ExplanationRetrySnapshot,
+} from "@/lib/companion-retry";
 import {
   createConversationId,
   loadCompanionStore,
@@ -61,7 +68,7 @@ type CompanionContextValue = {
   setAudienceLevel: (level: AudienceLevel) => void;
   setSelectedMatch: (matchId: string | null) => void;
   send: (text: string) => Promise<void>;
-  retry: (retryText: string) => Promise<void>;
+  retry: (messageId: string) => Promise<void>;
 };
 
 const CompanionContext = createContext<CompanionContextValue | null>(null);
@@ -346,10 +353,34 @@ export function CompanionProvider({ children }: { children: ReactNode }) {
   );
 
   const retry = useCallback(
-    async (retryText: string) => {
-      await send(retryText);
+    async (messageId: string) => {
+      if (pending || !active) {
+        return;
+      }
+      const failed = active.messages.find((item) => item.id === messageId);
+      const snapshot = failed
+        ? snapshotFromFailedMessage(failed, {
+            matchId: active.selectedMatchId,
+            audience: active.audienceLevel,
+          })
+        : null;
+      if (!snapshot) {
+        return;
+      }
+      setPending(true);
+      try {
+        const assistant = await retryFailedExplanation(snapshot);
+        const replacement: ChatMessage = { ...assistant, id: messageId };
+        patchActive((item) => ({
+          ...item,
+          updatedAt: nowIso(),
+          messages: replaceMessageById(item.messages, messageId, replacement),
+        }));
+      } finally {
+        setPending(false);
+      }
     },
-    [send],
+    [active, patchActive, pending],
   );
 
   const value = useMemo(
@@ -494,6 +525,12 @@ async function buildAssistantMessage(input: {
     (intent.preferMoment && input.moments[0]
       ? input.moments[0].sequence
       : undefined);
+  const snapshot: ExplanationRetrySnapshot = {
+    text: input.text,
+    matchId: input.matchId,
+    sequence: sequence ?? null,
+    audience: input.audience,
+  };
 
   try {
     const response = await createExplanation(input.matchId, input.audience, sequence);
@@ -506,16 +543,54 @@ async function buildAssistantMessage(input: {
       response,
     };
   } catch (error) {
+    return attachRetrySnapshot(
+      {
+        id,
+        role: "assistant",
+        createdAt,
+        kind: "match",
+        content: isPulseApiError(error)
+          ? companionErrorMessage(error.code, error.message)
+          : "The explanation service could not answer from this match context.",
+        error: isPulseApiError(error) ? error.code : "request_failed",
+      },
+      snapshot,
+    );
+  }
+}
+
+async function retryFailedExplanation(
+  snapshot: ExplanationRetrySnapshot,
+): Promise<ChatMessage> {
+  const createdAt = nowIso();
+  const id = createConversationId();
+  try {
+    const response = await createExplanation(
+      snapshot.matchId,
+      snapshot.audience,
+      snapshot.sequence === null ? undefined : snapshot.sequence,
+    );
     return {
       id,
       role: "assistant",
       createdAt,
       kind: "match",
-      content: isPulseApiError(error)
-        ? error.message
-        : "The explanation service could not answer from this match context.",
-      error: isPulseApiError(error) ? error.code : "request_failed",
-      retryText: input.text,
+      content: response.summary,
+      response,
     };
+  } catch (error) {
+    return attachRetrySnapshot(
+      {
+        id,
+        role: "assistant",
+        createdAt,
+        kind: "match",
+        content: isPulseApiError(error)
+          ? companionErrorMessage(error.code, error.message)
+          : "The explanation service could not answer from this match context.",
+        error: isPulseApiError(error) ? error.code : "request_failed",
+      },
+      snapshot,
+    );
   }
 }
