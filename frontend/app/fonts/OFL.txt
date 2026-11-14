@@ -1,0 +1,4 @@
+These WOFF2 files are SIL Open Font License (OFL) distributions of
+Oswald and Plus Jakarta Sans, via Fontsource (same files Google Fonts serves).
+
+They are bundled so production builds do not fetch fonts.google.com at compile time.

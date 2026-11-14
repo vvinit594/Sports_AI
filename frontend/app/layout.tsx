@@ -1,20 +1,23 @@
 import type { Metadata } from "next";
-import { Oswald, Plus_Jakarta_Sans } from "next/font/google";
+import localFont from "next/font/local";
 
 import { OnboardingProvider } from "@/components/providers/OnboardingProvider";
 import { ProgressProvider } from "@/components/providers/ProgressProvider";
 
 import "./globals.css";
 
-const display = Oswald({
-  subsets: ["latin"],
+const display = localFont({
+  src: "./fonts/oswald-latin-wght-normal.woff2",
   variable: "--font-oswald",
-  weight: ["500", "600", "700"],
+  display: "swap",
+  weight: "200 700",
 });
 
-const body = Plus_Jakarta_Sans({
-  subsets: ["latin"],
+const body = localFont({
+  src: "./fonts/plus-jakarta-sans-latin-wght-normal.woff2",
   variable: "--font-jakarta",
+  display: "swap",
+  weight: "200 800",
 });
 
 export const metadata: Metadata = {
