@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useEffect, useRef } from "react";
 
 import { Card } from "@/components/ui/Card";
 import {
@@ -20,7 +21,9 @@ type TrendingMomentsProps = {
   matches: MatchSummary[];
   unavailableReason: string | null;
   loaded: boolean;
+  loading: boolean;
   evaluationLimitation: string | null;
+  onApproach: () => void;
 };
 
 export function TrendingMoments({
@@ -29,14 +32,41 @@ export function TrendingMoments({
   matches,
   unavailableReason,
   loaded,
+  loading,
   evaluationLimitation,
+  onApproach,
 }: TrendingMomentsProps) {
   const { markMomentRead } = useProgress();
+  const sectionRef = useRef<HTMLElement>(null);
   const copy = momentCopy(level);
   const byId = new Map(matches.map((match) => [match.source_match_id, match]));
 
+  useEffect(() => {
+    if (loaded || loading) {
+      return;
+    }
+    if (typeof IntersectionObserver === "undefined") {
+      onApproach();
+      return;
+    }
+    const node = sectionRef.current;
+    if (!node) {
+      return;
+    }
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) {
+          onApproach();
+        }
+      },
+      { root: null, rootMargin: "240px 0px", threshold: 0 },
+    );
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [loaded, loading, onApproach]);
+
   return (
-    <section className="mt-12">
+    <section ref={sectionRef} className="mt-12">
       <p className="text-xs font-semibold uppercase tracking-[0.32em] text-[var(--gold)]">
         Historical moments
       </p>
@@ -47,7 +77,9 @@ export function TrendingMoments({
         {evaluationLimitation ? ` ${evaluationLimitation}` : ""}
       </p>
       {!loaded ? (
-        <p className="mt-6 text-sm text-muted">Checking detected moments…</p>
+        <p className="mt-6 text-sm text-muted" role="status">
+          {loading ? "Checking detected moments…" : "Historical moments load when this section is nearby."}
+        </p>
       ) : moments.length === 0 ? (
         <p className="mt-6 rounded-[24px] border border-white/10 bg-[var(--surface)] p-5 text-sm text-muted">
           {unavailableReason === "model_artifact_missing"

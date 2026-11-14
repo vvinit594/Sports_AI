@@ -9,18 +9,21 @@ import {
   formatProbabilityDelta,
   momentScoreline,
 } from "@/lib/format";
+import type { ExplanationState } from "@/hooks/useDashboardData";
+import { useProgress } from "@/hooks/useProgress";
 import { learnTopicFromState, momentCopy } from "@/lib/personalization";
 import type { ExplanationResponse, MatchState, MatchSummary, MomentView } from "@/types/api";
 import type { ExperienceLevel } from "@/types/onboarding";
-import { useProgress } from "@/hooks/useProgress";
 
 type InsightGridProps = {
   level: ExperienceLevel | null;
   featured: MatchSummary;
   state: MatchState | null;
   moment: MomentView | null;
+  featuredMomentsLoaded: boolean;
   momentsUnavailableReason: string | null;
   explanation: ExplanationResponse | null;
+  explanationState: ExplanationState;
   explanationError: string | null;
 };
 
@@ -29,8 +32,10 @@ export function InsightGrid({
   featured,
   state,
   moment,
+  featuredMomentsLoaded,
   momentsUnavailableReason,
   explanation,
+  explanationState,
   explanationError,
 }: InsightGridProps) {
   const { markTopicCompleted, markMomentRead } = useProgress();
@@ -46,7 +51,12 @@ export function InsightGrid({
       <div className="mt-6 grid gap-4 lg:grid-cols-3">
         <Card className="flex flex-col">
           <p className="text-xs uppercase tracking-[0.18em] text-[var(--red)]">Match moment</p>
-          {moment ? (
+          {!featuredMomentsLoaded ? (
+            <InsightStatus
+              title="Checking this match"
+              body="Looking up reconstructed chase moments for this historical sample."
+            />
+          ) : moment ? (
             <>
               <h3 className="mt-3 font-display text-2xl uppercase">
                 {formatMomentType(moment.moment_type)}
@@ -111,7 +121,12 @@ export function InsightGrid({
 
         <Card className="flex flex-col">
           <p className="text-xs uppercase tracking-[0.18em] text-[var(--electric)]">AI breakdown</p>
-          {explanation ? (
+          {explanationState === "loading" || explanationState === "idle" ? (
+            <InsightStatus
+              title="Preparing a grounded breakdown"
+              body="Asking PulseIQ for a grounded breakdown of this historical match."
+            />
+          ) : explanation ? (
             <>
               <h3 className="mt-3 font-display text-2xl uppercase">Why this state mattered</h3>
               <p className="mt-2 text-sm text-muted">
@@ -145,6 +160,17 @@ function EmptyInsight({ title, body }: { title: string; body: string }) {
     <>
       <h3 className="mt-3 font-display text-2xl uppercase">{title}</h3>
       <p className="mt-3 text-sm text-muted">{body}</p>
+    </>
+  );
+}
+
+function InsightStatus({ title, body }: { title: string; body: string }) {
+  return (
+    <>
+      <h3 className="mt-3 font-display text-2xl uppercase">{title}</h3>
+      <p className="mt-3 text-sm text-muted" role="status">
+        {body}
+      </p>
     </>
   );
 }
