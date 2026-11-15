@@ -32,6 +32,7 @@ def build_provider(settings: Settings) -> LLMProvider:
             base_url=settings.gemini_base_url,
             timeout_seconds=settings.llm_timeout_seconds,
             max_retries=settings.llm_max_retries,
+            request_deadline_seconds=settings.llm_request_deadline_seconds,
             fallback_model_name=safe_gemini_fallback_model(model_name),
         )
     if name in {"openai", "openai_compatible"}:
@@ -47,6 +48,7 @@ def build_provider(settings: Settings) -> LLMProvider:
             base_url=settings.openai_base_url,
             timeout_seconds=settings.llm_timeout_seconds,
             max_retries=settings.llm_max_retries,
+            request_deadline_seconds=settings.llm_request_deadline_seconds,
         )
     raise ProviderError(
         f"unsupported LLM_PROVIDER: {settings.llm_provider}",

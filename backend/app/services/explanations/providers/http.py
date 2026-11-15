@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import random
 import re
 import time
 
@@ -16,6 +17,7 @@ RETRYABLE_STATUS = frozenset({429, 500, 502, 503, 504})
 _SECRET_RE = re.compile(
     r"(?i)(api[_-]?key|key|token|authorization|bearer)([\"']?\s*[:=]\s*)([^\s,;\"']+)"
 )
+_MIN_RETRY_BUDGET_SECONDS = 1.0
 
 
 class JsonHttpClient:
@@ -25,8 +27,15 @@ class JsonHttpClient:
         timeout_seconds: float,
         max_retries: int,
         transport: httpx.BaseTransport | None = None,
+        request_deadline_seconds: float | None = None,
     ):
+        self.timeout_seconds = timeout_seconds
         self.max_retries = max_retries
+        self.request_deadline_seconds = (
+            timeout_seconds
+            if request_deadline_seconds is None
+            else request_deadline_seconds
+        )
         self._client = httpx.Client(
             timeout=httpx.Timeout(timeout_seconds),
             transport=transport,
@@ -42,25 +51,44 @@ class JsonHttpClient:
         headers: dict[str, str],
         payload: dict[str, object],
     ) -> dict[str, object]:
+        started = time.monotonic()
+        deadline = started + self.request_deadline_seconds
         attempts = self.max_retries + 1
         last_status: int | None = None
         for attempt in range(attempts):
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise ProviderError(
+                    "LLM provider timed out",
+                    code="timeout",
+                    status_code=504,
+                )
+            attempt_timeout = min(self.timeout_seconds, remaining)
             try:
-                response = self._client.post(url, headers=headers, json=payload)
+                response = self._client.post(
+                    url,
+                    headers=headers,
+                    json=payload,
+                    timeout=httpx.Timeout(
+                        connect=min(5.0, attempt_timeout),
+                        read=attempt_timeout,
+                        write=min(10.0, attempt_timeout),
+                        pool=min(5.0, attempt_timeout),
+                    ),
+                )
             except httpx.TimeoutException as exc:
-                if attempt + 1 < attempts:
-                    logger.info(
-                        "retrying LLM provider after timeout attempt=%s", attempt + 1
-                    )
-                    time.sleep(_backoff(attempt))
-                    continue
+                logger.warning(
+                    "LLM provider attempt timed out attempt=%s remaining=%.2f",
+                    attempt + 1,
+                    deadline - time.monotonic(),
+                )
                 raise ProviderError(
                     "LLM provider timed out",
                     code="timeout",
                     status_code=504,
                 ) from exc
             except httpx.TransportError as exc:
-                if attempt + 1 < attempts:
+                if attempt + 1 < attempts and _has_retry_budget(deadline):
                     time.sleep(_backoff(attempt))
                     continue
                 raise ProviderError(
@@ -70,13 +98,20 @@ class JsonHttpClient:
                 ) from exc
 
             last_status = response.status_code
-            if response.status_code in RETRYABLE_STATUS and attempt + 1 < attempts:
+            if (
+                response.status_code in RETRYABLE_STATUS
+                and attempt + 1 < attempts
+                and _has_retry_budget(deadline)
+            ):
+                delay = _retry_after(response, attempt)
+                if deadline - time.monotonic() <= delay + _MIN_RETRY_BUDGET_SECONDS:
+                    raise _http_error(response)
                 logger.info(
                     "retrying LLM provider status=%s attempt=%s",
                     response.status_code,
                     attempt + 1,
                 )
-                time.sleep(_retry_after(response, attempt))
+                time.sleep(delay)
                 continue
             if response.status_code >= 400:
                 raise _http_error(response)
@@ -101,6 +136,10 @@ class JsonHttpClient:
             code="provider_error",
             status_code=502,
         )
+
+
+def _has_retry_budget(deadline: float) -> bool:
+    return deadline - time.monotonic() > _MIN_RETRY_BUDGET_SECONDS
 
 
 def _http_error(response: httpx.Response) -> ProviderError:
@@ -173,7 +212,8 @@ def _safe_error_snippet(response: httpx.Response) -> str | None:
 
 
 def _backoff(attempt: int) -> float:
-    return min(0.25 * (2**attempt), 2.0)
+    base = min(0.25 * (2**attempt), 2.0)
+    return min(base * (0.5 + random.random()), 2.0)
 
 
 def _retry_after(response: httpx.Response, attempt: int) -> float:

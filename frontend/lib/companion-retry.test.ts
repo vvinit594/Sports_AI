@@ -100,7 +100,7 @@ test("failed retry keeps the same assistant slot retryable", () => {
   const again = attachRetrySnapshot(
     assistant({
       id: "a1",
-      content: "Gemini timed out before finishing this explanation. Retry the same match and sequence.",
+      content: "PulseIQ couldn't finish this explanation in time. Your match context is preserved. Please try again.",
       error: "timeout",
     }),
     {

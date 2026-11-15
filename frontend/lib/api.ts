@@ -16,6 +16,8 @@ import {
 
 const API_PREFIX = "/api/v1";
 const MATCHES_PATH = "/matches";
+const GET_TIMEOUT_MS = 15_000;
+const WRITE_TIMEOUT_MS = 35_000;
 
 export class PulseApiError extends Error {
   constructor(
@@ -23,6 +25,7 @@ export class PulseApiError extends Error {
     readonly code: string,
     message: string,
     readonly detail: string | null = null,
+    readonly requestId: string | null = null,
   ) {
     super(message);
     this.name = "PulseApiError";
@@ -35,46 +38,82 @@ export function isPulseApiError(error: unknown): error is PulseApiError {
 
 async function apiRequest<T>(path: string, init?: RequestInit): Promise<T> {
   const method = (init?.method ?? "GET").toUpperCase();
+  const timeoutMs = method === "GET" || method === "HEAD" ? GET_TIMEOUT_MS : WRITE_TIMEOUT_MS;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
   let response: Response;
   try {
     response = await fetch(`${API_PREFIX}${path}`, {
       ...init,
       cache: "no-store",
       method,
+      signal: controller.signal,
       headers: {
         Accept: "application/json",
         ...(init?.body ? { "Content-Type": "application/json" } : {}),
         ...init?.headers,
       },
     });
-  } catch {
+  } catch (error) {
+    if (isAbortError(error)) {
+      throw new PulseApiError(
+        504,
+        "timeout",
+        "The PulseIQ API timed out. Please try again.",
+      );
+    }
     throw new PulseApiError(
       0,
       "network_error",
       "Could not reach the PulseIQ API.",
     );
+  } finally {
+    clearTimeout(timer);
   }
 
   if (!response.ok) {
     let code = "request_failed";
     let message = `Request failed (${response.status})`;
     let detail: string | null = null;
+    let requestId: string | null = null;
     try {
       const body = (await response.json()) as {
         error?: string;
         code?: string;
         detail?: string | null;
+        request_id?: string | null;
       };
       code = body.code ?? code;
       message = body.error ?? message;
       detail = body.detail ?? null;
+      requestId = body.request_id ?? null;
     } catch {
       // Non-JSON error bodies still surface the HTTP status.
     }
-    throw new PulseApiError(response.status, code, message, detail);
+    if (code === "request_failed") {
+      if (response.status === 504) {
+        code = "timeout";
+      } else if (response.status === 429) {
+        code = "rate_limited";
+      } else if (response.status === 502 || response.status === 503) {
+        code = "provider_error";
+      } else if (response.status === 401 || response.status === 403) {
+        code = "invalid_credentials";
+      }
+    }
+    throw new PulseApiError(response.status, code, message, detail, requestId);
   }
 
   return (await response.json()) as T;
+}
+
+function isAbortError(error: unknown): boolean {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "name" in error &&
+    (error as { name?: string }).name === "AbortError"
+  );
 }
 
 async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {

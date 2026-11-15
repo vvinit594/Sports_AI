@@ -64,6 +64,7 @@ def test_settings(**overrides: object) -> Settings:
         "llm_provider": "mock",
         "llm_model": "mock-explanations-v1",
         "llm_timeout_seconds": 1.0,
+        "llm_request_deadline_seconds": 3.0,
         "llm_max_retries": 1,
         "max_request_bytes": 4096,
     }

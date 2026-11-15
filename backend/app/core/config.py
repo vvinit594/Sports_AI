@@ -91,6 +91,12 @@ class Settings(BaseSettings):
         default=20.0,
         validation_alias=AliasChoices("LLM_TIMEOUT_SECONDS", "llm_timeout_seconds"),
     )
+    llm_request_deadline_seconds: float = Field(
+        default=28.0,
+        validation_alias=AliasChoices(
+            "LLM_REQUEST_DEADLINE_SECONDS", "llm_request_deadline_seconds"
+        ),
+    )
     llm_max_retries: int = Field(
         default=2,
         ge=0,

@@ -5,7 +5,7 @@ import { useEffect, useRef } from "react";
 
 import { Logo } from "@/components/brand/Logo";
 import { Button } from "@/components/ui/Button";
-import { canRetryMessage } from "@/lib/companion-retry";
+import { messageIsRetryable, retryActionVisible } from "@/lib/companion-errors";
 import type { ChatMessage } from "@/types/companion";
 
 type MessageListProps = {
@@ -120,7 +120,7 @@ function AssistantMessage({
       {message.kind === "knowledge" ? (
         <p className="mt-3 text-[11px] text-muted">Curated learning content · not match-model output</p>
       ) : null}
-      {canRetryMessage(message, pending) ? (
+      {retryActionVisible(message, pending) ? (
         <div className="mt-3">
           <Button
             variant="outline"
@@ -130,7 +130,9 @@ function AssistantMessage({
             Retry
           </Button>
         </div>
-      ) : message.error ? (
+      ) : message.error && pending && messageIsRetryable(message) ? (
+        <p className="mt-3 text-xs text-muted">Retry is paused until this request finishes.</p>
+      ) : message.error && !messageIsRetryable(message) ? (
         <p className="mt-3 text-xs text-muted">
           This explanation failed and is not retryable from the current message.
         </p>

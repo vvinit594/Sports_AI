@@ -175,4 +175,5 @@ export type ApiErrorBody = {
   error: string;
   code: string;
   detail: string | null;
+  request_id?: string | null;
 };

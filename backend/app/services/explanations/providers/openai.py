@@ -18,6 +18,7 @@ class OpenAICompatibleProvider:
         timeout_seconds: float,
         max_retries: int,
         client: JsonHttpClient | None = None,
+        request_deadline_seconds: float | None = None,
     ):
         if not api_key.strip():
             raise ProviderError(
@@ -31,6 +32,7 @@ class OpenAICompatibleProvider:
         self._client = client or JsonHttpClient(
             timeout_seconds=timeout_seconds,
             max_retries=max_retries,
+            request_deadline_seconds=request_deadline_seconds,
         )
 
     def generate_json(self, system_prompt: str, user_prompt: str) -> str:

@@ -18,6 +18,7 @@ class ErrorResponse(FrozenApiModel):
     error: str
     code: str
     detail: str | None = None
+    request_id: str | None = None
 
 
 class HealthResponse(FrozenApiModel):

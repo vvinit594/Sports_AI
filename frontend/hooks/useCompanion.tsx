@@ -6,6 +6,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
@@ -24,7 +25,11 @@ import {
   resolveIntent,
   UNSUPPORTED_COPY,
 } from "@/lib/companion-intent";
-import { companionErrorMessage } from "@/lib/companion-errors";
+import {
+  companionErrorMessage,
+  isRetryableCompanionError,
+  shouldApplyRequestResult,
+} from "@/lib/companion-errors";
 import {
   attachRetrySnapshot,
   replaceMessageById,
@@ -108,6 +113,7 @@ export function CompanionProvider({ children }: { children: ReactNode }) {
   const [momentsUnavailable, setMomentsUnavailable] = useState<string | null>(null);
   const [matchLoading, setMatchLoading] = useState(false);
   const [matchError, setMatchError] = useState<string | null>(null);
+  const requestSeq = useRef(0);
 
   useEffect(() => {
     if (!profileHydrated) {
@@ -223,6 +229,18 @@ export function CompanionProvider({ children }: { children: ReactNode }) {
     };
   }, [active?.selectedMatchId]);
 
+  const patchConversation = useCallback(
+    (conversationId: string, updater: (current: Conversation) => Conversation) => {
+      setStore((current) => ({
+        ...current,
+        conversations: current.conversations.map((item) =>
+          item.id === conversationId ? updater(item) : item,
+        ),
+      }));
+    },
+    [],
+  );
+
   const patchActive = useCallback((updater: (current: Conversation) => Conversation) => {
     setStore((current) => {
       const id = current.activeId;
@@ -238,7 +256,13 @@ export function CompanionProvider({ children }: { children: ReactNode }) {
     });
   }, []);
 
+  const abandonInFlight = useCallback(() => {
+    requestSeq.current += 1;
+    setPending(false);
+  }, []);
+
   const newConversationHandler = useCallback(() => {
+    abandonInFlight();
     setStore((current) => {
       const created = newConversation(profileAudience);
       return {
@@ -246,15 +270,16 @@ export function CompanionProvider({ children }: { children: ReactNode }) {
         activeId: created.id,
       };
     });
-  }, [profileAudience]);
+  }, [abandonInFlight, profileAudience]);
 
   const selectConversation = useCallback((id: string) => {
+    abandonInFlight();
     setStore((current) =>
       current.conversations.some((item) => item.id === id)
         ? { ...current, activeId: id }
         : current,
     );
-  }, []);
+  }, [abandonInFlight]);
 
   const renameConversation = useCallback((id: string, title: string) => {
     const nextTitle = title.trim() || "New conversation";
@@ -267,6 +292,7 @@ export function CompanionProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const deleteConversation = useCallback((id: string) => {
+    abandonInFlight();
     setStore((current) => {
       const remaining = current.conversations.filter((item) => item.id !== id);
       if (remaining.length === 0) {
@@ -277,12 +303,13 @@ export function CompanionProvider({ children }: { children: ReactNode }) {
         current.activeId === id ? remaining[0].id : current.activeId;
       return { conversations: remaining, activeId };
     });
-  }, [profileAudience]);
+  }, [abandonInFlight, profileAudience]);
 
   const clearAll = useCallback(() => {
+    abandonInFlight();
     const created = newConversation(profileAudience);
     setStore({ conversations: [created], activeId: created.id });
-  }, [profileAudience]);
+  }, [abandonInFlight, profileAudience]);
 
   const setAudienceLevel = useCallback(
     (level: AudienceLevel) => {
@@ -305,18 +332,21 @@ export function CompanionProvider({ children }: { children: ReactNode }) {
   const send = useCallback(
     async (raw: string) => {
       const text = raw.replace(/\s+/g, " ").trim();
-      if (!text || pending) {
+      if (!text || pending || !active) {
         return;
       }
-      const audience = active?.audienceLevel ?? profileAudience;
-      const matchId = active?.selectedMatchId ?? null;
+      const conversationId = active.id;
+      const audience = active.audienceLevel ?? profileAudience;
+      const matchId = active.selectedMatchId ?? null;
+      const seq = requestSeq.current + 1;
+      requestSeq.current = seq;
       const userMessage: ChatMessage = {
         id: createConversationId(),
         role: "user",
         content: text,
         createdAt: nowIso(),
       };
-      patchActive((item) => ({
+      patchConversation(conversationId, (item) => ({
         ...item,
         title:
           item.messages.length === 0 ? titleFromQuestion(text) : item.title,
@@ -332,21 +362,32 @@ export function CompanionProvider({ children }: { children: ReactNode }) {
           latestSequence: matchDetail?.latest_sequence,
           moments,
         });
-        patchActive((item) => ({
+        if (
+          !shouldApplyRequestResult(
+            seq,
+            requestSeq.current,
+            conversationId,
+            active.id,
+          )
+        ) {
+          return;
+        }
+        patchConversation(conversationId, (item) => ({
           ...item,
           updatedAt: nowIso(),
           messages: [...item.messages, assistant],
         }));
       } finally {
-        setPending(false);
+        if (requestSeq.current === seq) {
+          setPending(false);
+        }
       }
     },
     [
-      active?.audienceLevel,
-      active?.selectedMatchId,
+      active,
       matchDetail?.latest_sequence,
       moments,
-      patchActive,
+      patchConversation,
       pending,
       profileAudience,
     ],
@@ -358,29 +399,45 @@ export function CompanionProvider({ children }: { children: ReactNode }) {
         return;
       }
       const failed = active.messages.find((item) => item.id === messageId);
-      const snapshot = failed
-        ? snapshotFromFailedMessage(failed, {
-            matchId: active.selectedMatchId,
-            audience: active.audienceLevel,
-          })
-        : null;
+      if (!failed || !isRetryableCompanionError(failed.error)) {
+        return;
+      }
+      const snapshot = snapshotFromFailedMessage(failed, {
+        matchId: active.selectedMatchId,
+        audience: active.audienceLevel,
+      });
       if (!snapshot) {
         return;
       }
+      const conversationId = active.id;
+      const seq = requestSeq.current + 1;
+      requestSeq.current = seq;
       setPending(true);
       try {
         const assistant = await retryFailedExplanation(snapshot);
+        if (
+          !shouldApplyRequestResult(
+            seq,
+            requestSeq.current,
+            conversationId,
+            active.id,
+          )
+        ) {
+          return;
+        }
         const replacement: ChatMessage = { ...assistant, id: messageId };
-        patchActive((item) => ({
+        patchConversation(conversationId, (item) => ({
           ...item,
           updatedAt: nowIso(),
           messages: replaceMessageById(item.messages, messageId, replacement),
         }));
       } finally {
-        setPending(false);
+        if (requestSeq.current === seq) {
+          setPending(false);
+        }
       }
     },
-    [active, patchActive, pending],
+    [active, patchConversation, pending],
   );
 
   const value = useMemo(
@@ -550,7 +607,7 @@ async function buildAssistantMessage(input: {
         createdAt,
         kind: "match",
         content: isPulseApiError(error)
-          ? companionErrorMessage(error.code, error.message)
+          ? companionErrorMessage(error.code, error.message, error.requestId)
           : "The explanation service could not answer from this match context.",
         error: isPulseApiError(error) ? error.code : "request_failed",
       },
@@ -586,7 +643,7 @@ async function retryFailedExplanation(
         createdAt,
         kind: "match",
         content: isPulseApiError(error)
-          ? companionErrorMessage(error.code, error.message)
+          ? companionErrorMessage(error.code, error.message, error.requestId)
           : "The explanation service could not answer from this match context.",
         error: isPulseApiError(error) ? error.code : "request_failed",
       },

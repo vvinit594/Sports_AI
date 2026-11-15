@@ -102,6 +102,7 @@ class GeminiProvider:
         max_retries: int,
         client: JsonHttpClient | None = None,
         fallback_model_name: str | None = None,
+        request_deadline_seconds: float | None = None,
     ):
         if not api_key.strip():
             raise ProviderError(
@@ -126,10 +127,11 @@ class GeminiProvider:
         self._client = client or JsonHttpClient(
             timeout_seconds=timeout_seconds,
             max_retries=max_retries,
+            request_deadline_seconds=request_deadline_seconds,
         )
 
     def generate_json(self, system_prompt: str, user_prompt: str) -> str:
-        payload = _gemini_payload(system_prompt, user_prompt)
+        payload = _gemini_payload(system_prompt, user_prompt, self.model_name)
         headers = {
             "Content-Type": "application/json",
             "x-goog-api-key": self._api_key,
@@ -162,15 +164,28 @@ class GeminiProvider:
         return extract_gemini_text(body)
 
 
-def _gemini_payload(system_prompt: str, user_prompt: str) -> dict[str, object]:
+def _gemini_payload(
+    system_prompt: str, user_prompt: str, model_name: str = ""
+) -> dict[str, object]:
+    generation_config: dict[str, object] = {
+        "temperature": 0.2,
+        "responseMimeType": "application/json",
+        **_thinking_config(model_name),
+    }
     return {
         "systemInstruction": {"parts": [{"text": system_prompt}]},
         "contents": [{"role": "user", "parts": [{"text": user_prompt}]}],
-        "generationConfig": {
-            "temperature": 0.2,
-            "responseMimeType": "application/json",
-        },
+        "generationConfig": generation_config,
     }
+
+
+def _thinking_config(model_name: str) -> dict[str, object]:
+    lowered = model_name.lower()
+    if lowered.startswith("gemini-3"):
+        return {"thinkingConfig": {"thinkingLevel": "LOW"}}
+    if "2.5" in lowered:
+        return {"thinkingConfig": {"thinkingBudget": 0}}
+    return {}
 
 
 def extract_gemini_text(body: dict[str, object]) -> str:

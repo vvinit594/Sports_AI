@@ -177,6 +177,62 @@ def test_timeout_handling():
     assert exc.value.status_code == 504
 
 
+def test_timeout_is_not_retried():
+    calls = {"count": 0}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls["count"] += 1
+        raise httpx.TimeoutException("slow", request=request)
+
+    client = JsonHttpClient(
+        timeout_seconds=0.1,
+        max_retries=2,
+        transport=httpx.MockTransport(handler),
+    )
+    with pytest.raises(ProviderError) as exc:
+        client.post_json("https://example.test/llm", headers={}, payload={})
+    assert exc.value.code == "timeout"
+    assert calls["count"] == 1
+
+
+def test_outer_request_deadline_blocks_further_retries():
+    calls = {"count": 0}
+
+    def handler(_request: httpx.Request) -> httpx.Response:
+        calls["count"] += 1
+        return httpx.Response(503, json={"error": "down"})
+
+    client = JsonHttpClient(
+        timeout_seconds=1,
+        max_retries=5,
+        request_deadline_seconds=0.01,
+        transport=httpx.MockTransport(handler),
+    )
+    with pytest.raises(ProviderError) as exc:
+        client.post_json("https://example.test/llm", headers={}, payload={})
+    assert exc.value.code in {"provider_error", "timeout"}
+    assert calls["count"] <= 1
+
+
+def test_server_error_retry_exhaustion():
+    calls = {"count": 0}
+
+    def handler(_request: httpx.Request) -> httpx.Response:
+        calls["count"] += 1
+        return httpx.Response(500, json={"error": "boom"})
+
+    client = JsonHttpClient(
+        timeout_seconds=1,
+        max_retries=2,
+        request_deadline_seconds=10,
+        transport=httpx.MockTransport(handler),
+    )
+    with pytest.raises(ProviderError) as exc:
+        client.post_json("https://example.test/llm", headers={}, payload={})
+    assert exc.value.code == "provider_error"
+    assert calls["count"] == 3
+
+
 def test_rate_limit_handling():
     def handler(_request: httpx.Request) -> httpx.Response:
         return httpx.Response(429, json={"error": "rate"})
@@ -507,6 +563,24 @@ def test_gemini_request_uses_current_rest_schema():
     assert body["contents"][0]["role"] == "user"
     assert body["contents"][0]["parts"][0]["text"] == "user-context"
     assert body["generationConfig"]["responseMimeType"] == "application/json"
+    assert body["generationConfig"]["thinkingConfig"]["thinkingLevel"] == "LOW"
+
+
+def test_gemini_25_disables_thinking_budget():
+    captured: dict[str, object] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["body"] = json.loads(request.content)
+        return httpx.Response(200, json=_gemini_success_body())
+
+    provider = _gemini_provider(
+        httpx.MockTransport(handler), model_name="gemini-2.5-flash"
+    )
+    provider.generate_json("system-rules", "user-context")
+    body = captured["body"]
+    assert isinstance(body, dict)
+    assert body["generationConfig"]["thinkingConfig"]["thinkingBudget"] == 0
+    assert body["generationConfig"]["responseMimeType"] == "application/json"
 
 
 def test_gemini_valid_response():
@@ -666,6 +740,7 @@ def test_http_retries_transient_then_succeeds():
     client = JsonHttpClient(
         timeout_seconds=1,
         max_retries=1,
+        request_deadline_seconds=10,
         transport=httpx.MockTransport(handler),
     )
     body = client.post_json("https://example.test/llm", headers={}, payload={})
@@ -761,3 +836,28 @@ def test_explanation_provider_failure_is_structured():
     assert body["detail"] == "models/mock-explanations-v1 is not found"
     assert "test-key" not in response.text
     assert "GEMINI_API_KEY" not in response.text
+    assert body.get("request_id")
+
+
+def test_explanation_timeout_is_structured():
+    match, _ = sample_chase_match("exp-timeout")
+    client = api_client(
+        matches=[match],
+        provider=ScriptedProvider(
+            ProviderError(
+                "LLM provider timed out",
+                code="timeout",
+                status_code=504,
+            )
+        ),
+    )
+    response = client.post(
+        "/api/v1/matches/exp-timeout/explanations",
+        json={"audience_level": "beginner", "sequence": 1},
+    )
+    assert response.status_code == 504
+    body = response.json()
+    assert body["code"] == "timeout"
+    assert body["error"] == "LLM provider timed out"
+    assert body["request_id"]
+    assert "summary" not in body

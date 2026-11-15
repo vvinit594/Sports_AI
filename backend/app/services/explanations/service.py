@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import time
 
 from app.core.exceptions import ExplanationError, ProviderError
 from app.core.logging import log_event
@@ -42,9 +43,18 @@ class ExplanationService:
         context = build_explanation_context(loaded, state, self.artifact)
         validate_context(context)
         system_prompt, user_prompt = build_prompts(audience_level, context)
+        started = time.monotonic()
         try:
             raw = self.provider.generate_json(system_prompt, user_prompt)
         except ProviderError:
+            log_event(
+                logger,
+                "explanation_provider_failed",
+                match_id=match_id,
+                sequence=context.sequence,
+                duration_ms=int((time.monotonic() - started) * 1000),
+                provider=self.provider.name,
+            )
             raise
         except Exception as exc:
             raise ProviderError(
@@ -67,6 +77,7 @@ class ExplanationService:
             sequence=context.sequence,
             audience=audience_level.value,
             provider=self.provider.name,
+            duration_ms=int((time.monotonic() - started) * 1000),
         )
         return response
 
