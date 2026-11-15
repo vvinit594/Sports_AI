@@ -27,6 +27,19 @@ class HealthResponse(FrozenApiModel):
     phase: int = 3
 
 
+class LlmUsageView(FrozenApiModel):
+    storage: Literal["process_local"] = "process_local"
+    max_requests_per_minute: int
+    requests_in_current_minute: int
+    daily_request_budget: int
+    daily_requests_used: int
+    daily_resets_at_utc: str
+    max_concurrent_requests: int
+    cache_entries: int
+    cache_ttl_seconds: int
+    resets_on_process_restart: bool = True
+
+
 class ReadinessResponse(FrozenApiModel):
     status: Literal["ready", "not_ready"]
     catalog_loaded: bool
@@ -36,6 +49,7 @@ class ReadinessResponse(FrozenApiModel):
     llm_provider: str
     llm_configured: bool
     llm_model: str
+    llm_usage: LlmUsageView | None = None
 
 
 class MatchSummary(FrozenApiModel):

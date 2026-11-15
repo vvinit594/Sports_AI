@@ -88,15 +88,32 @@ Empty text fields and invalid JSON are rejected with `malformed_output`.
 | `openai` | `OPENAI_API_KEY`. OpenAI-compatible chat completions via httpx. |
 
 Optional: `LLM_MODEL`, `OPENAI_BASE_URL`, `GEMINI_BASE_URL`,
-`LLM_TIMEOUT_SECONDS`, `LLM_MAX_RETRIES`.
+`LLM_TIMEOUT_SECONDS`, `LLM_REQUEST_DEADLINE_SECONDS`, `LLM_MAX_RETRIES`,
+`GEMINI_MAX_RETRIES`, `GEMINI_MAX_REQUESTS_PER_MINUTE`,
+`GEMINI_DAILY_REQUEST_BUDGET`, `GEMINI_MAX_CONCURRENT_REQUESTS`,
+`GEMINI_CACHE_TTL_SECONDS`.
 
 Do not configure both keys unless you need to switch providers. Only the
 selected provider is used. Missing credentials for the selected provider
 return `provider_unavailable` (HTTP 503).
 
-There is no LangChain, no vendor SDK, and no agent loop. Timeouts and 429/5xx
-responses use bounded retries (`LLM_MAX_RETRIES`, default 2, maximum 5).
-Invalid credentials are not retried into success.
+There is no LangChain, no vendor SDK, and no agent loop.
+
+Gemini Phase 1 policy: one outbound `generateContent` attempt per user action
+(`GEMINI_MAX_RETRIES=0`). HTTP 429/503/5xx/404/400/401/403 are not retried and
+do not fall back to another model. OpenAI-compatible providers may still use
+`LLM_MAX_RETRIES`. Invalid credentials are not retried into success.
+
+Gemini traffic in this process is also bounded by a rolling RPM limiter
+(default 4), a UTC daily budget (default 12), and a single-concurrency gate.
+Successful identical explanations are cached in process memory (default TTL
+3600s). These counters are process-local: they reset on restart and are not
+shared across Render instances or other apps using the same Google project.
+They do not guarantee Google Free Tier compliance.
+
+There is no user authentication, so the explanation cache is shared for the
+same historical match, sequence, audience, and model id. Failures are never
+cached.
 
 API keys stay server-side. They are not logged and not returned in responses.
 Prompts are not written in full to logs.

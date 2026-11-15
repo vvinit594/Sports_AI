@@ -30,7 +30,14 @@ def register_exception_handlers(app: FastAPI) -> None:
     async def provider_error(_request: Request, exc: ProviderError) -> JSONResponse:
         request_id = _request_id()
         logger.warning("provider error code=%s request_id=%s", exc.code, request_id)
-        return _error(exc.status_code, str(exc), exc.code, exc.detail, request_id)
+        return _error(
+            exc.status_code,
+            str(exc),
+            exc.code,
+            exc.detail,
+            request_id,
+            retry_after=exc.retry_after,
+        )
 
     @app.exception_handler(ExplanationError)
     async def explanation_error(
@@ -84,6 +91,12 @@ def _error(
     code: str,
     detail: str | None = None,
     request_id: str | None = None,
+    retry_after: int | None = None,
 ) -> JSONResponse:
     body = ErrorResponse(error=error, code=code, detail=detail, request_id=request_id)
-    return JSONResponse(status_code=status_code, content=body.model_dump())
+    headers = {}
+    if retry_after is not None and retry_after > 0:
+        headers["Retry-After"] = str(int(retry_after))
+    return JSONResponse(
+        status_code=status_code, content=body.model_dump(), headers=headers
+    )

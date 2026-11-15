@@ -5,8 +5,9 @@
 Phase 1 reconstructs cricket match state. Phase 2 adds chase-win features,
 baseline models, inference, and deterministic moment detection. Phase 3 adds a
 modular FastAPI application and a provider-independent GenAI explanation
-service. There is still no database, cache, frontend, live cricket provider,
-authentication, or agent framework.
+service. There is still no database, Redis, live cricket provider,
+authentication, or agent framework. Gemini Free-Tier protection uses
+process-local in-memory counters and a bounded explanation cache.
 
 ```
 Cricsheet JSON (historical samples)

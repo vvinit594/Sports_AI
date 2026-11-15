@@ -103,6 +103,50 @@ class Settings(BaseSettings):
         le=5,
         validation_alias=AliasChoices("LLM_MAX_RETRIES", "llm_max_retries"),
     )
+    gemini_max_retries: int = Field(
+        default=0,
+        ge=0,
+        le=5,
+        validation_alias=AliasChoices("GEMINI_MAX_RETRIES", "gemini_max_retries"),
+    )
+    gemini_max_requests_per_minute: int = Field(
+        default=4,
+        ge=1,
+        le=20,
+        validation_alias=AliasChoices(
+            "GEMINI_MAX_REQUESTS_PER_MINUTE", "gemini_max_requests_per_minute"
+        ),
+    )
+    gemini_daily_request_budget: int = Field(
+        default=12,
+        ge=0,
+        le=20,
+        validation_alias=AliasChoices(
+            "GEMINI_DAILY_REQUEST_BUDGET", "gemini_daily_request_budget"
+        ),
+    )
+    gemini_max_concurrent_requests: int = Field(
+        default=1,
+        ge=1,
+        le=4,
+        validation_alias=AliasChoices(
+            "GEMINI_MAX_CONCURRENT_REQUESTS", "gemini_max_concurrent_requests"
+        ),
+    )
+    gemini_cache_ttl_seconds: float = Field(
+        default=3600.0,
+        ge=0,
+        validation_alias=AliasChoices(
+            "GEMINI_CACHE_TTL_SECONDS", "gemini_cache_ttl_seconds"
+        ),
+    )
+    gemini_queue_wait_seconds: float = Field(
+        default=0.0,
+        ge=0,
+        validation_alias=AliasChoices(
+            "GEMINI_QUEUE_WAIT_SECONDS", "gemini_queue_wait_seconds"
+        ),
+    )
 
     @field_validator("gemini_api_key", "openai_api_key", "model_path", mode="before")
     @classmethod

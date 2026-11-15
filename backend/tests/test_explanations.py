@@ -210,7 +210,7 @@ def test_outer_request_deadline_blocks_further_retries():
     )
     with pytest.raises(ProviderError) as exc:
         client.post_json("https://example.test/llm", headers={}, payload={})
-    assert exc.value.code in {"provider_error", "timeout"}
+    assert exc.value.code in {"provider_error", "provider_unavailable", "timeout"}
     assert calls["count"] <= 1
 
 
@@ -492,7 +492,8 @@ def test_explicit_gemini_25_flash_is_not_silently_remapped():
     )
     provider = build_provider(settings)
     assert provider.model_name == "gemini-2.5-flash"
-    assert provider._fallback_model_name == DEFAULT_GEMINI_MODEL
+    assert provider._fallback_model_name is None
+    assert provider._allow_model_fallback is False
 
 
 def test_shutdown_model_cannot_be_used_as_fallback():
@@ -516,13 +517,15 @@ def test_shutdown_model_cannot_be_used_as_fallback():
         fallback_model_name="gemini-2.0-flash",
     )
     assert provider.model_name == "gemini-2.5-flash"
-    assert provider._fallback_model_name == DEFAULT_GEMINI_MODEL
     assert provider._fallback_model_name != "gemini-2.0-flash"
-    raw = provider.generate_json("s", "u")
-    assert json.loads(raw)["summary"] == "A short summary"
-    assert provider.model_name == DEFAULT_GEMINI_MODEL
-    assert any(f"models/{DEFAULT_GEMINI_MODEL}:generateContent" in url for url in seen)
+    with pytest.raises(ProviderError) as exc:
+        provider.generate_json("s", "u")
+    assert exc.value.code == "unsupported_model"
+    assert seen == [
+        "https://example.test/gemini/models/gemini-2.5-flash:generateContent"
+    ]
     assert not any("gemini-2.0-flash" in url for url in seen)
+    assert not any(DEFAULT_GEMINI_MODEL in url for url in seen)
 
 
 def test_provider_factory_remaps_placeholder_gemini_model():
@@ -633,23 +636,28 @@ def test_gemini_unsupported_model():
     assert "test-key" not in exc.value.detail
 
 
-def test_gemini_falls_back_when_configured_model_is_missing():
+def test_gemini_does_not_fall_back_to_another_model_on_404():
+    calls = {"count": 0}
+
     def handler(request: httpx.Request) -> httpx.Response:
+        calls["count"] += 1
         if "retired-model" in str(request.url):
             return httpx.Response(
                 404,
                 json={"error": {"message": "models/retired-model is not found"}},
             )
-        return httpx.Response(200, json=_gemini_success_body())
+        raise AssertionError("Phase 1 must not call a fallback Gemini model")
 
     provider = _gemini_provider(
         httpx.MockTransport(handler),
         model_name="retired-model",
         fallback_model_name=DEFAULT_GEMINI_MODEL,
     )
-    raw = provider.generate_json("s", "u")
-    assert json.loads(raw)["summary"] == "A short summary"
-    assert provider.model_name == DEFAULT_GEMINI_MODEL
+    with pytest.raises(ProviderError) as exc:
+        provider.generate_json("s", "u")
+    assert exc.value.code == "unsupported_model"
+    assert calls["count"] == 1
+    assert provider.model_name == "retired-model"
 
 
 def test_gemini_rate_limit():
@@ -684,6 +692,56 @@ def test_gemini_server_error():
     with pytest.raises(ProviderError) as exc:
         provider.generate_json("s", "u")
     assert exc.value.code == "provider_error"
+
+
+def test_gemini_503_is_unavailable_not_rate_limit():
+    calls = {"count": 0}
+
+    def handler(_request: httpx.Request) -> httpx.Response:
+        calls["count"] += 1
+        return httpx.Response(503, json={"error": "overloaded"})
+
+    provider = _gemini_provider(httpx.MockTransport(handler), max_retries=0)
+    with pytest.raises(ProviderError) as exc:
+        provider.generate_json("s", "u")
+    assert exc.value.code == "provider_unavailable"
+    assert exc.value.status_code == 503
+    assert "rate" not in str(exc.value).lower()
+    assert calls["count"] == 1
+
+
+def test_gemini_factory_default_does_not_retry_503():
+    calls = {"count": 0}
+
+    def handler(_request: httpx.Request) -> httpx.Response:
+        calls["count"] += 1
+        return httpx.Response(503, json={"error": "overloaded"})
+
+    settings = Settings.model_validate(
+        {
+            "llm_provider": "gemini",
+            "llm_model": "gemini-3.8-flash",
+            "gemini_api_key": "test-key",
+        }
+    )
+    transport = httpx.MockTransport(handler)
+    provider = GeminiProvider(
+        api_key="test-key",
+        model_name=settings.llm_model,
+        base_url="https://example.test/gemini",
+        timeout_seconds=1,
+        max_retries=settings.gemini_max_retries,
+        client=JsonHttpClient(
+            timeout_seconds=1,
+            max_retries=settings.gemini_max_retries,
+            transport=transport,
+        ),
+    )
+    assert settings.gemini_max_retries == 0
+    with pytest.raises(ProviderError) as exc:
+        provider.generate_json("s", "u")
+    assert exc.value.code == "provider_unavailable"
+    assert calls["count"] == 1
 
 
 def test_gemini_empty_response():

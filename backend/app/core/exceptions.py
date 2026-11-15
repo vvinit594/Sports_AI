@@ -81,5 +81,7 @@ class ProviderError(ExplanationError):
         code: str = "provider_error",
         status_code: int = 502,
         detail: str | None = None,
+        retry_after: int | None = None,
     ):
         super().__init__(message, code=code, status_code=status_code, detail=detail)
+        self.retry_after = retry_after

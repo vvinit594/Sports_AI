@@ -54,7 +54,9 @@ missing.
 not fail readiness; win-probability and moment endpoints then return an
 unavailable payload instead of invented numbers.
 
-The response never includes environment variables or API keys.
+When `LLM_PROVIDER=gemini`, readiness may also include `llm_usage` with
+process-local RPM, daily budget, concurrency, and cache counts. Those values
+reset on process restart and never include API keys.
 
 ### `GET /api/v1/matches`
 
@@ -188,10 +190,13 @@ All errors use:
 | 404 | `sequence_not_found` | Unknown delivery sequence |
 | 413 | `request_too_large` | Body larger than `PULSEIQ_MAX_REQUEST_BYTES` |
 | 422 | `validation_error` | Invalid query or JSON body |
-| 429 | `rate_limited` | LLM provider rate limit |
+| 429 | `rate_limited` | Gemini HTTP 429. `Retry-After` is set when the provider sent one. |
+| 429 | `application_rate_limited` | PulseIQ RPM or concurrency limit. `Retry-After` is set. |
+| 429 | `daily_budget_exhausted` | PulseIQ UTC daily Gemini budget. `Retry-After` until next UTC midnight. |
 | 502 | `malformed_output` | LLM JSON failed schema validation |
 | 502 | `invalid_credentials` | LLM provider rejected the server-side key |
-| 503 | `provider_unavailable` | Selected LLM provider is not configured |
+| 502 | `unsupported_model` | Gemini HTTP 404 / unknown model. No automatic model fallback. |
+| 503 | `provider_unavailable` | Provider not configured, or Gemini HTTP 503 (not treated as a rate limit) |
 | 504 | `timeout` | LLM provider timed out |
 
 Responses do not include stack traces, environment variables, or API keys.

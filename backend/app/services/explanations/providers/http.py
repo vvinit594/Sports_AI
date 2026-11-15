@@ -28,6 +28,7 @@ class JsonHttpClient:
         max_retries: int,
         transport: httpx.BaseTransport | None = None,
         request_deadline_seconds: float | None = None,
+        attempt_hook: object | None = None,
     ):
         self.timeout_seconds = timeout_seconds
         self.max_retries = max_retries
@@ -36,6 +37,7 @@ class JsonHttpClient:
             if request_deadline_seconds is None
             else request_deadline_seconds
         )
+        self.attempt_hook = attempt_hook
         self._client = httpx.Client(
             timeout=httpx.Timeout(timeout_seconds),
             transport=transport,
@@ -43,6 +45,12 @@ class JsonHttpClient:
 
     def close(self) -> None:
         self._client.close()
+
+    def _run_attempt_hook(self) -> None:
+        hook = self.attempt_hook
+        if hook is None:
+            return
+        hook()
 
     def post_json(
         self,
@@ -59,10 +67,12 @@ class JsonHttpClient:
             remaining = deadline - time.monotonic()
             if remaining <= 0:
                 raise ProviderError(
-                    "LLM provider timed out",
+                    "PulseIQ could not finish this explanation in time. "
+                    "Your match context is preserved.",
                     code="timeout",
                     status_code=504,
                 )
+            self._run_attempt_hook()
             attempt_timeout = min(self.timeout_seconds, remaining)
             try:
                 response = self._client.post(
@@ -83,7 +93,8 @@ class JsonHttpClient:
                     deadline - time.monotonic(),
                 )
                 raise ProviderError(
-                    "LLM provider timed out",
+                    "PulseIQ could not finish this explanation in time. "
+                    "Your match context is preserved.",
                     code="timeout",
                     status_code=504,
                 ) from exc
@@ -142,6 +153,16 @@ def _has_retry_budget(deadline: float) -> bool:
     return deadline - time.monotonic() > _MIN_RETRY_BUDGET_SECONDS
 
 
+def _parse_retry_after_seconds(response: httpx.Response) -> int | None:
+    header = response.headers.get("Retry-After")
+    if not header:
+        return None
+    try:
+        return max(1, int(float(header)))
+    except ValueError:
+        return None
+
+
 def _http_error(response: httpx.Response) -> ProviderError:
     snippet = _safe_error_snippet(response)
     status = response.status_code
@@ -155,10 +176,11 @@ def _http_error(response: httpx.Response) -> ProviderError:
         )
     if status == 429:
         return ProviderError(
-            "LLM provider rate limited",
+            "The AI provider has reached its request limit. Please wait before trying again.",
             code="rate_limited",
             status_code=429,
             detail=snippet,
+            retry_after=_parse_retry_after_seconds(response),
         )
     if status == 404:
         return ProviderError(
@@ -174,9 +196,18 @@ def _http_error(response: httpx.Response) -> ProviderError:
             status_code=502,
             detail=snippet,
         )
-    if status in {500, 502, 503, 504}:
+    if status == 503:
         return ProviderError(
-            "LLM provider is temporarily unavailable",
+            "The AI provider is temporarily unavailable. "
+            "Your match context is preserved. Please try again later.",
+            code="provider_unavailable",
+            status_code=503,
+            detail=snippet,
+        )
+    if status in {500, 502, 504}:
+        return ProviderError(
+            "The AI provider is temporarily unavailable. "
+            "Your match context is preserved. Please try again later.",
             code="provider_error",
             status_code=502,
             detail=snippet,

@@ -14,6 +14,7 @@ from app.core.logging import setup_logging
 from app.schemas.api import ErrorResponse
 from app.services.api.catalog import MatchCatalog
 from app.services.api.intelligence import IntelligenceService, load_optional_model
+from app.services.explanations.guard import GeminiRequestManager
 from app.services.explanations.providers.factory import build_provider
 from app.services.explanations.service import ExplanationService, UnavailableProvider
 from app.services.ml.model_registry import ModelArtifact
@@ -61,11 +62,18 @@ def create_app(
     else:
         artifact = model_artifact  # type: ignore[assignment]
 
+    request_manager = None
+    if resolved.normalized_llm_provider() == "gemini":
+        request_manager = GeminiRequestManager.from_settings(resolved)
+
     if llm_provider is not None:
         provider = llm_provider
+        bind = getattr(provider, "bind_request_manager", None)
+        if request_manager is not None and callable(bind):
+            bind(request_manager)
     else:
         try:
-            provider = build_provider(resolved)
+            provider = build_provider(resolved, request_manager=request_manager)
         except ProviderError as exc:
             provider = UnavailableProvider(exc)
 
@@ -73,7 +81,10 @@ def create_app(
     app.state.catalog = loaded_catalog
     app.state.model_artifact = artifact
     app.state.intelligence = IntelligenceService(loaded_catalog, artifact)
-    app.state.explanations = ExplanationService(loaded_catalog, provider, artifact)
+    app.state.gemini_guard = request_manager
+    app.state.explanations = ExplanationService(
+        loaded_catalog, provider, artifact, request_manager=request_manager
+    )
 
     app.add_middleware(RequestSizeLimitMiddleware, max_bytes=resolved.max_request_bytes)
     register_exception_handlers(app)

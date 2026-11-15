@@ -3,11 +3,29 @@
 from __future__ import annotations
 
 import logging
+import time
 
 from app.core.exceptions import ProviderError
+from app.core.logging import log_event
 from app.services.explanations.providers.http import JsonHttpClient
 
 logger = logging.getLogger(__name__)
+
+_GEMINI_USER_MESSAGES = {
+    "timeout": (
+        "PulseIQ could not finish this explanation in time. "
+        "Your match context is preserved."
+    ),
+    "rate_limited": "Gemini has reached its request limit. Please wait before trying again.",
+    "provider_unavailable": (
+        "Gemini is temporarily unavailable. Your match context is preserved. "
+        "Please try again later."
+    ),
+    "provider_error": (
+        "Gemini is temporarily unavailable. Your match context is preserved. "
+        "Please try again later."
+    ),
+}
 
 # Stable Gemini API Flash model as of the Gemini API model catalog
 # (https://ai.google.dev/gemini-api/docs/models). Gemini 2.0 Flash shut down
@@ -103,6 +121,8 @@ class GeminiProvider:
         client: JsonHttpClient | None = None,
         fallback_model_name: str | None = None,
         request_deadline_seconds: float | None = None,
+        request_manager: object | None = None,
+        allow_model_fallback: bool = False,
     ):
         if not api_key.strip():
             raise ProviderError(
@@ -129,6 +149,14 @@ class GeminiProvider:
             max_retries=max_retries,
             request_deadline_seconds=request_deadline_seconds,
         )
+        self._allow_model_fallback = allow_model_fallback
+        if request_manager is not None:
+            self.bind_request_manager(request_manager)
+
+    def bind_request_manager(self, request_manager: object) -> None:
+        bind = getattr(request_manager, "bind_http_client", None)
+        if callable(bind):
+            bind(self._client)
 
     def generate_json(self, system_prompt: str, user_prompt: str) -> str:
         payload = _gemini_payload(system_prompt, user_prompt, self.model_name)
@@ -137,30 +165,55 @@ class GeminiProvider:
             "x-goog-api-key": self._api_key,
         }
         attempted = self.model_name
+        started = time.monotonic()
         try:
             body = self._client.post_json(self._url, headers=headers, payload=payload)
         except ProviderError as exc:
-            if exc.code != "unsupported_model" or self._fallback_model_name is None:
-                raise _with_model_detail(exc, attempted) from exc
-            logger.warning(
-                "Gemini model unavailable model=%s; using fallback model=%s",
-                attempted,
-                self._fallback_model_name,
+            duration_ms = int((time.monotonic() - started) * 1000)
+            log_event(
+                logger,
+                "gemini_http_failed",
+                model=attempted,
+                code=exc.code,
+                status=exc.status_code,
+                duration_ms=duration_ms,
             )
-            fallback_url = gemini_generate_url(
-                self._base_url, self._fallback_model_name
-            )
-            try:
-                body = self._client.post_json(
-                    fallback_url, headers=headers, payload=payload
-                )
-            except ProviderError as fallback_exc:
-                raise _with_model_detail(
-                    fallback_exc,
+            if (
+                self._allow_model_fallback
+                and exc.code == "unsupported_model"
+                and self._fallback_model_name is not None
+            ):
+                logger.warning(
+                    "Gemini model unavailable model=%s; using fallback model=%s",
+                    attempted,
                     self._fallback_model_name,
-                    attempted_model=attempted,
-                ) from fallback_exc
-            self.model_name = self._fallback_model_name
+                )
+                fallback_url = gemini_generate_url(
+                    self._base_url, self._fallback_model_name
+                )
+                try:
+                    body = self._client.post_json(
+                        fallback_url, headers=headers, payload=payload
+                    )
+                except ProviderError as fallback_exc:
+                    raise _with_model_detail(
+                        _user_facing_gemini_error(fallback_exc),
+                        self._fallback_model_name,
+                        attempted_model=attempted,
+                    ) from fallback_exc
+                self.model_name = self._fallback_model_name
+            else:
+                raise _with_model_detail(
+                    _user_facing_gemini_error(exc), attempted
+                ) from exc
+        else:
+            log_event(
+                logger,
+                "gemini_http_ok",
+                model=self.model_name,
+                status=200,
+                duration_ms=int((time.monotonic() - started) * 1000),
+            )
         return extract_gemini_text(body)
 
 
@@ -250,6 +303,17 @@ def extract_gemini_text(body: dict[str, object]) -> str:
     return texts[0] if len(texts) == 1 else "\n".join(texts)
 
 
+def _user_facing_gemini_error(exc: ProviderError) -> ProviderError:
+    message = _GEMINI_USER_MESSAGES.get(exc.code, str(exc))
+    return ProviderError(
+        message,
+        code=exc.code,
+        status_code=exc.status_code,
+        detail=exc.detail,
+        retry_after=getattr(exc, "retry_after", None),
+    )
+
+
 def _with_model_detail(
     exc: ProviderError,
     model_name: str,
@@ -266,4 +330,5 @@ def _with_model_detail(
         code=exc.code,
         status_code=exc.status_code,
         detail="; ".join(parts),
+        retry_after=getattr(exc, "retry_after", None),
     )

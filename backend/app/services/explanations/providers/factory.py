@@ -8,13 +8,14 @@ from app.services.explanations.providers.base import LLMProvider
 from app.services.explanations.providers.gemini import (
     GeminiProvider,
     resolve_gemini_model,
-    safe_gemini_fallback_model,
 )
 from app.services.explanations.providers.mock import MockLLMProvider
 from app.services.explanations.providers.openai import OpenAICompatibleProvider
 
 
-def build_provider(settings: Settings) -> LLMProvider:
+def build_provider(
+    settings: Settings, *, request_manager: object | None = None
+) -> LLMProvider:
     name = settings.normalized_llm_provider()
     if name == "mock":
         return MockLLMProvider(model_name=settings.llm_model)
@@ -31,9 +32,10 @@ def build_provider(settings: Settings) -> LLMProvider:
             model_name=model_name,
             base_url=settings.gemini_base_url,
             timeout_seconds=settings.llm_timeout_seconds,
-            max_retries=settings.llm_max_retries,
+            max_retries=settings.gemini_max_retries,
             request_deadline_seconds=settings.llm_request_deadline_seconds,
-            fallback_model_name=safe_gemini_fallback_model(model_name),
+            request_manager=request_manager,
+            allow_model_fallback=False,
         )
     if name in {"openai", "openai_compatible"}:
         if not settings.openai_api_key:

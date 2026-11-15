@@ -5,7 +5,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 
-from app.schemas.api import HealthResponse, ReadinessResponse
+from app.schemas.api import HealthResponse, LlmUsageView, ReadinessResponse
 from app.services.explanations.providers.factory import (
     provider_is_configured,
     resolved_llm_model,
@@ -27,6 +27,22 @@ def ready(request: Request) -> ReadinessResponse | JSONResponse:
     model_loaded = request.app.state.model_artifact is not None
     llm_configured = provider_is_configured(settings)
     is_ready = catalog_loaded
+    usage = None
+    manager = getattr(request.app.state, "gemini_guard", None)
+    if manager is not None:
+        snap = manager.snapshot()
+        usage = LlmUsageView(
+            storage="process_local",
+            max_requests_per_minute=snap.max_requests_per_minute,
+            requests_in_current_minute=snap.requests_in_current_minute,
+            daily_request_budget=snap.daily_request_budget,
+            daily_requests_used=snap.daily_requests_used,
+            daily_resets_at_utc=snap.daily_resets_at_utc,
+            max_concurrent_requests=snap.max_concurrent_requests,
+            cache_entries=snap.cache_entries,
+            cache_ttl_seconds=snap.cache_ttl_seconds,
+            resets_on_process_restart=snap.resets_on_process_restart,
+        )
     body = ReadinessResponse(
         status="ready" if is_ready else "not_ready",
         catalog_loaded=catalog_loaded,
@@ -35,6 +51,7 @@ def ready(request: Request) -> ReadinessResponse | JSONResponse:
         llm_provider=settings.normalized_llm_provider(),
         llm_configured=llm_configured,
         llm_model=resolved_llm_model(settings),
+        llm_usage=usage,
     )
     if not is_ready:
         return JSONResponse(status_code=503, content=body.model_dump())
