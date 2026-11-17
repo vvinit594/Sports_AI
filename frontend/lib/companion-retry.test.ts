@@ -95,6 +95,38 @@ test("successful retry replaces the failed assistant without duplicating it", ()
   assert.equal(next[1].error, undefined);
 });
 
+test("degraded fallback responses remain retryable without an error code", () => {
+  const degraded = assistant({
+    error: undefined,
+    content: "AI explanation is temporarily unavailable",
+    response: {
+      summary: "AI explanation is temporarily unavailable",
+      what_happened: "Verified facts",
+      why_it_matters: "Degraded mode",
+      match_context: "Historical",
+      key_factors: ["score"],
+      audience_level: "casual",
+      source_match_id: "335988",
+      source_sequence: 195,
+      generated_at: "2024-01-01T00:00:01.000Z",
+      model_provider: "deterministic",
+      model_name: "pulseiq-cricket-rules-v1",
+      data_source: "historical_cricsheet",
+      grounded: true,
+      explanation_source: "fallback",
+      degraded: true,
+      fallback_reason: "daily_budget_exhausted",
+    },
+  });
+  assert.equal(canRetryMessage(degraded, false), true);
+  assert.deepEqual(snapshotFromFailedMessage(degraded), {
+    text: "Explain sequence 195",
+    matchId: "335988",
+    sequence: 195,
+    audience: "casual",
+  });
+});
+
 test("failed retry keeps the same assistant slot retryable", () => {
   const failed = assistant();
   const again = attachRetrySnapshot(

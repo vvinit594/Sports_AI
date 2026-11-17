@@ -320,13 +320,14 @@ export function CompanionProvider({ children }: { children: ReactNode }) {
 
   const setSelectedMatch = useCallback(
     (matchId: string | null) => {
+      abandonInFlight();
       patchActive((item) => ({
         ...item,
         selectedMatchId: matchId,
         updatedAt: nowIso(),
       }));
     },
-    [patchActive],
+    [abandonInFlight, patchActive],
   );
 
   const send = useCallback(
@@ -399,7 +400,7 @@ export function CompanionProvider({ children }: { children: ReactNode }) {
         return;
       }
       const failed = active.messages.find((item) => item.id === messageId);
-      if (!failed || !isRetryableCompanionError(failed.error)) {
+      if (!failed) {
         return;
       }
       const snapshot = snapshotFromFailedMessage(failed, {
@@ -407,6 +408,9 @@ export function CompanionProvider({ children }: { children: ReactNode }) {
         audience: active.audienceLevel,
       });
       if (!snapshot) {
+        return;
+      }
+      if (failed.error && !isRetryableCompanionError(failed.error)) {
         return;
       }
       const conversationId = active.id;
@@ -590,8 +594,13 @@ async function buildAssistantMessage(input: {
   };
 
   try {
-    const response = await createExplanation(input.matchId, input.audience, sequence);
-    return {
+    const response = await createExplanation(
+      input.matchId,
+      input.audience,
+      sequence,
+      input.text,
+    );
+    const message: ChatMessage = {
       id,
       role: "assistant",
       createdAt,
@@ -599,6 +608,10 @@ async function buildAssistantMessage(input: {
       content: response.summary,
       response,
     };
+    if (response.degraded || response.explanation_source === "fallback") {
+      return attachRetrySnapshot(message, snapshot);
+    }
+    return message;
   } catch (error) {
     return attachRetrySnapshot(
       {
@@ -626,8 +639,9 @@ async function retryFailedExplanation(
       snapshot.matchId,
       snapshot.audience,
       snapshot.sequence === null ? undefined : snapshot.sequence,
+      snapshot.text,
     );
-    return {
+    const message: ChatMessage = {
       id,
       role: "assistant",
       createdAt,
@@ -635,6 +649,10 @@ async function retryFailedExplanation(
       content: response.summary,
       response,
     };
+    if (response.degraded || response.explanation_source === "fallback") {
+      return attachRetrySnapshot(message, snapshot);
+    }
+    return message;
   } catch (error) {
     return attachRetrySnapshot(
       {

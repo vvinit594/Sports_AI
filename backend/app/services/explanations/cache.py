@@ -79,7 +79,7 @@ def explanation_cache_key(
 
 
 def is_cacheable_explanation(response: ExplanationResponse) -> bool:
-    """Only complete successful explanations may enter the cache."""
+    """Only complete successful Gemini explanations may enter the cache."""
 
     required = (
         response.summary,
@@ -91,7 +91,11 @@ def is_cacheable_explanation(response: ExplanationResponse) -> bool:
         return False
     if not response.grounded:
         return False
-    if response.explanation_source == "deterministic":
+    if response.degraded:
+        return False
+    if response.explanation_source != "gemini":
+        return False
+    if response.fallback_reason:
         return False
     return True
 

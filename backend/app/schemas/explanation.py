@@ -162,4 +162,6 @@ class ExplanationResponse(FrozenExplanationModel):
     model_name: str
     data_source: Literal["historical_cricsheet"] = "historical_cricsheet"
     grounded: bool = True
-    explanation_source: Literal["deterministic", "gemini"] = "gemini"
+    explanation_source: Literal["deterministic", "gemini", "fallback"] = "gemini"
+    degraded: bool = False
+    fallback_reason: str | None = None

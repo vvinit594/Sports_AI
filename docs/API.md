@@ -174,6 +174,20 @@ Omit `sequence` to explain the latest reconstructed state.
 `question` is optional (max 500 characters). Omitting it preserves the existing
 Gemini/mock state-explanation path.
 
+Response includes additive source fields:
+
+| Field | Values / notes |
+| --- | --- |
+| `explanation_source` | `gemini`, `deterministic`, or `fallback` |
+| `degraded` | `true` for verified-facts fallback after provider failure |
+| `fallback_reason` | Stable reason code when `explanation_source` is `fallback`; otherwise null |
+
+When Gemini (or the guarded Gemini path) fails with a provider/parse error, the
+API returns HTTP 200 with `explanation_source: "fallback"` and verified match
+facts instead of a hard provider error body. Incomplete context and validation
+errors still return structured error responses. Fallback responses are not
+cached as Gemini successes.
+
 When `question` is classified as a high-confidence supported factual category,
 the API answers from reconstructed match evidence with
 `explanation_source: "deterministic"` and does not call Gemini. Medium/low
@@ -201,14 +215,14 @@ All errors use:
 | 404 | `sequence_not_found` | Unknown delivery sequence |
 | 413 | `request_too_large` | Body larger than `PULSEIQ_MAX_REQUEST_BYTES` |
 | 422 | `validation_error` | Invalid query or JSON body |
-| 429 | `rate_limited` | Gemini HTTP 429. `Retry-After` is set when the provider sent one. |
-| 429 | `application_rate_limited` | PulseIQ RPM or concurrency limit. `Retry-After` is set. |
-| 429 | `daily_budget_exhausted` | PulseIQ UTC daily Gemini budget. `Retry-After` until next UTC midnight. |
-| 502 | `malformed_output` | LLM JSON failed schema validation |
-| 502 | `invalid_credentials` | LLM provider rejected the server-side key |
-| 502 | `unsupported_model` | Gemini HTTP 404 / unknown model. No automatic model fallback. |
-| 503 | `provider_unavailable` | Provider not configured, or Gemini HTTP 503 (not treated as a rate limit) |
-| 504 | `timeout` | LLM provider timed out |
+| 400 | `incomplete_context` | Explanation context missing required evidence |
+| 429 / 502 / 503 / 504 | provider codes | Raised by direct provider clients and non-explanation paths |
+
+For `POST .../explanations`, eligible Gemini provider failures (429, 502, 503,
+504, timeouts, malformed output, application RPM/daily budget) return
+**HTTP 200** with `explanation_source=fallback` and `fallback_reason` set,
+rather than those error statuses. Guard limits are still enforced; only the
+user-facing explanation path degrades.
 
 Responses do not include stack traces, environment variables, or API keys.
 

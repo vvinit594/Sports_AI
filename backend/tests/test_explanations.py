@@ -271,9 +271,10 @@ def test_invalid_provider_output_rejected():
         ScriptedProvider("this is not json"),
         heuristic_artifact(),
     )
-    with pytest.raises(ExplanationError) as exc:
-        service.explain("exp-invalid", AudienceLevel.CASUAL)
-    assert exc.value.code == "malformed_output"
+    response = service.explain("exp-invalid", AudienceLevel.CASUAL)
+    assert response.explanation_source == "fallback"
+    assert response.degraded is True
+    assert response.fallback_reason == "malformed_provider_output"
 
 
 def test_structured_output_validation_requires_fields():
@@ -889,14 +890,14 @@ def test_explanation_provider_failure_is_structured():
         "/api/v1/matches/exp-fail/explanations",
         json={"audience_level": "casual"},
     )
-    assert response.status_code == 502
+    assert response.status_code == 200
     body = response.json()
-    assert body["error"] == "The configured LLM model is not available"
-    assert body["code"] == "unsupported_model"
-    assert body["detail"] == "models/mock-explanations-v1 is not found"
+    assert body["explanation_source"] == "fallback"
+    assert body["degraded"] is True
+    assert body["fallback_reason"] == "unsupported_model"
+    assert "AI explanation is temporarily unavailable" in body["summary"]
     assert "test-key" not in response.text
     assert "GEMINI_API_KEY" not in response.text
-    assert body.get("request_id")
 
 
 def test_explanation_timeout_is_structured():
@@ -915,9 +916,9 @@ def test_explanation_timeout_is_structured():
         "/api/v1/matches/exp-timeout/explanations",
         json={"audience_level": "beginner", "sequence": 1},
     )
-    assert response.status_code == 504
+    assert response.status_code == 200
     body = response.json()
-    assert body["code"] == "timeout"
-    assert body["error"] == "LLM provider timed out"
-    assert body["request_id"]
-    assert "summary" not in body
+    assert body["explanation_source"] == "fallback"
+    assert body["fallback_reason"] == "provider_timeout"
+    assert body["degraded"] is True
+    assert "summary" in body

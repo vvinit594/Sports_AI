@@ -399,9 +399,11 @@ def test_unsupported_question_gets_quota_error_when_budget_exhausted():
     assert score.status_code == 200
     assert score.json()["explanation_source"] == "deterministic"
     blocked = _post(client, "det-quota", "Why was that wicket tactically important?")
-    assert blocked.status_code == 429
-    assert blocked.json()["code"] == "daily_budget_exhausted"
-    assert "summary" not in blocked.json()
+    assert blocked.status_code == 200
+    assert blocked.json()["explanation_source"] == "fallback"
+    assert blocked.json()["fallback_reason"] == "daily_budget_exhausted"
+    assert blocked.json()["degraded"] is True
+    assert "AI explanation is temporarily unavailable" in blocked.json()["summary"]
 
 
 def test_gemini_cache_still_works_for_identical_unsupported_questions():

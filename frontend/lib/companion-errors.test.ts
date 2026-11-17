@@ -5,6 +5,7 @@ import type { ChatMessage } from "../types/companion.ts";
 import {
   companionErrorMessage,
   composerUsable,
+  explanationSourceLabel,
   isRetryableCompanionError,
   messageIsRetryable,
   retryActionVisible,
@@ -85,4 +86,43 @@ test("stale conversation results are ignored", () => {
   assert.equal(shouldApplyRequestResult(1, 1, "c1", "c1"), true);
   assert.equal(shouldApplyRequestResult(1, 2, "c1", "c1"), false);
   assert.equal(shouldApplyRequestResult(1, 1, "c1", "c2"), false);
+});
+
+test("labels Gemini, deterministic, and degraded sources", () => {
+  assert.match(explanationSourceLabel("gemini"), /AI explanation/);
+  assert.match(explanationSourceLabel("deterministic"), /Verified cricket facts/);
+  assert.match(explanationSourceLabel("fallback", true), /Degraded/);
+  assert.equal(isRetryableCompanionError("application_rate_limited", 429), true);
+  assert.equal(isRetryableCompanionError("daily_budget_exhausted", 429), true);
+  const degraded: ChatMessage = {
+    id: "d1",
+    role: "assistant",
+    content: "AI explanation is temporarily unavailable",
+    createdAt: "2024-01-01T00:00:00.000Z",
+    kind: "match",
+    retryText: "How is the chase going?",
+    retryMatchId: "335988",
+    retrySequence: null,
+    retryAudience: "casual",
+    response: {
+      summary: "AI explanation is temporarily unavailable",
+      what_happened: "Verified facts",
+      why_it_matters: "Degraded",
+      match_context: "Historical",
+      key_factors: ["score"],
+      audience_level: "casual",
+      source_match_id: "335988",
+      source_sequence: 10,
+      generated_at: "2024-01-01T00:00:01.000Z",
+      model_provider: "deterministic",
+      model_name: "pulseiq-cricket-rules-v1",
+      data_source: "historical_cricsheet",
+      grounded: true,
+      explanation_source: "fallback",
+      degraded: true,
+      fallback_reason: "provider_timeout",
+    },
+  };
+  assert.equal(messageIsRetryable(degraded), true);
+  assert.equal(retryActionVisible(degraded, false), true);
 });

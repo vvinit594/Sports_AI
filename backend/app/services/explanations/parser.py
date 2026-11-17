@@ -50,8 +50,15 @@ def to_response(
     provider_name: str,
     model_name: str,
     explanation_source: str = "gemini",
+    degraded: bool = False,
+    fallback_reason: str | None = None,
 ) -> ExplanationResponse:
-    source = "deterministic" if explanation_source == "deterministic" else "gemini"
+    if explanation_source == "deterministic":
+        source = "deterministic"
+    elif explanation_source == "fallback":
+        source = "fallback"
+    else:
+        source = "gemini"
     return ExplanationResponse(
         summary=payload.summary,
         what_happened=payload.what_happened,
@@ -65,6 +72,8 @@ def to_response(
         model_provider=provider_name,
         model_name=model_name,
         explanation_source=source,
+        degraded=degraded or source == "fallback",
+        fallback_reason=fallback_reason if source == "fallback" else None,
     )
 
 

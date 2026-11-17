@@ -25,6 +25,13 @@ from app.services.explanations.deterministic import (
     DETERMINISTIC_PROVIDER,
     answer_question,
 )
+from app.services.explanations.fallback import (
+    FALLBACK_MODEL,
+    FALLBACK_PROVIDER,
+    build_verified_facts_fallback,
+    fallback_reason_for,
+    is_fallback_eligible,
+)
 from app.services.explanations.guard import GeminiRequestManager
 from app.services.explanations.parser import parse_explanation_json, to_response
 from app.services.explanations.prompts import build_prompts, prompt_payload_size_chars
@@ -142,37 +149,51 @@ class ExplanationService:
         )
 
         def produce() -> ExplanationResponse:
-            with manager.gate:
-                replay = manager.cache.get(cache_key)
-                if replay is not None:
-                    log_event(
-                        logger,
-                        "gemini_cache_hit",
-                        match_id=match_id,
-                        sequence=context.sequence,
-                        audience=audience_level.value,
-                        request_id=request_id,
-                        model=self.provider.model_name,
+            try:
+                with manager.gate:
+                    replay = manager.cache.get(cache_key)
+                    if replay is not None:
+                        log_event(
+                            logger,
+                            "gemini_cache_hit",
+                            match_id=match_id,
+                            sequence=context.sequence,
+                            audience=audience_level.value,
+                            request_id=request_id,
+                            model=self.provider.model_name,
+                            context_ms=context_ms,
+                        )
+                        return replay
+                    response = self._generate(
+                        audience_level,
+                        context,
+                        request_id,
+                        question,
                         context_ms=context_ms,
                     )
-                    return replay
-                response = self._generate(
+                    stored = manager.cache.put(cache_key, response)
+                    log_event(
+                        logger,
+                        "gemini_cache_store",
+                        match_id=match_id,
+                        sequence=context.sequence,
+                        request_id=request_id,
+                        stored=stored,
+                        explanation_source=response.explanation_source,
+                        degraded=response.degraded,
+                    )
+                    return response
+            except (ProviderError, ExplanationError) as exc:
+                if not is_fallback_eligible(exc):
+                    raise
+                return self._fallback_response(
                     audience_level,
                     context,
                     request_id,
                     question,
+                    exc,
                     context_ms=context_ms,
                 )
-                stored = manager.cache.put(cache_key, response)
-                log_event(
-                    logger,
-                    "gemini_cache_store",
-                    match_id=match_id,
-                    sequence=context.sequence,
-                    request_id=request_id,
-                    stored=stored,
-                )
-                return response
 
         return manager.cache.coalesce(cache_key, produce)
 
@@ -205,7 +226,8 @@ class ExplanationService:
         )
         try:
             raw = self.provider.generate_json(system_prompt, user_prompt)
-        except ProviderError:
+            payload = parse_explanation_json(raw)
+        except (ProviderError, ExplanationError) as exc:
             log_event(
                 logger,
                 "explanation_provider_failed",
@@ -215,15 +237,45 @@ class ExplanationService:
                 provider=self.provider.name,
                 model=self.provider.model_name,
                 request_id=request_id,
+                error_code=getattr(exc, "code", "provider_error"),
+                error_status=getattr(exc, "status_code", None),
             )
+            if is_fallback_eligible(exc):
+                return self._fallback_response(
+                    audience_level,
+                    context,
+                    request_id,
+                    question,
+                    exc,
+                    context_ms=context_ms,
+                )
             raise
-        except Exception as exc:
-            raise ProviderError(
+        except Exception:
+            wrapped = ProviderError(
                 "LLM provider failed",
                 code="provider_error",
                 status_code=502,
-            ) from exc
-        payload = parse_explanation_json(raw)
+            )
+            log_event(
+                logger,
+                "explanation_provider_failed",
+                match_id=context.source_match_id,
+                sequence=context.sequence,
+                duration_ms=int((time.monotonic() - started) * 1000),
+                provider=self.provider.name,
+                model=self.provider.model_name,
+                request_id=request_id,
+                error_code=wrapped.code,
+                error_status=wrapped.status_code,
+            )
+            return self._fallback_response(
+                audience_level,
+                context,
+                request_id,
+                question,
+                wrapped,
+                context_ms=context_ms,
+            )
         response = to_response(
             payload,
             context=context,
@@ -243,6 +295,50 @@ class ExplanationService:
             duration_ms=int((time.monotonic() - started) * 1000),
             request_id=request_id,
             prompt_chars=len(system_prompt) + len(user_prompt),
+            explanation_source="gemini",
+        )
+        return response
+
+    def _fallback_response(
+        self,
+        audience_level: AudienceLevel,
+        context: ExplanationContext,
+        request_id: str,
+        question: str | None,
+        exc: Exception,
+        *,
+        context_ms: int | None = None,
+    ) -> ExplanationResponse:
+        reason = fallback_reason_for(exc)
+        payload = build_verified_facts_fallback(
+            context=context,
+            audience_level=audience_level,
+            reason=reason,
+            question=question,
+        )
+        response = to_response(
+            payload,
+            context=context,
+            audience_level=audience_level,
+            provider_name=FALLBACK_PROVIDER,
+            model_name=FALLBACK_MODEL,
+            explanation_source="fallback",
+            degraded=True,
+            fallback_reason=reason,
+        )
+        log_event(
+            logger,
+            "explanation_fallback_served",
+            match_id=context.source_match_id,
+            sequence=context.sequence,
+            audience=audience_level.value,
+            request_id=request_id,
+            fallback_reason=reason,
+            error_code=getattr(exc, "code", None),
+            error_status=getattr(exc, "status_code", None),
+            context_ms=context_ms,
+            explanation_source="fallback",
+            degraded=True,
         )
         return response
 

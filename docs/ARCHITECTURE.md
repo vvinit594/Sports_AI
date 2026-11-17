@@ -1,4 +1,4 @@
-# PulseIQ Architecture — Phase 1 through Phase 4
+# PulseIQ Architecture — Phase 1 through Phase 5
 
 ## Scope
 
@@ -6,10 +6,11 @@ Phase 1 reconstructs cricket match state. Phase 2 adds chase-win features,
 baseline models, inference, and deterministic moment detection. Phase 3 adds a
 modular FastAPI application and a provider-independent GenAI explanation
 service. Phase 4 tightens Gemini explanation caching (TTL/LRU, coalescing,
-key isolation) and compact prompt context without Redis or a database. There
-is still no live cricket provider, authentication, or agent framework. Gemini
-Free-Tier protection uses process-local in-memory counters and a bounded
-explanation cache.
+key isolation) and compact prompt context without Redis or a database.
+Phase 5 adds graceful verified-facts fallback when Gemini fails and Companion
+request lifecycle reliability. There is still no live cricket provider,
+authentication, or agent framework. Gemini Free-Tier protection uses
+process-local in-memory counters and a bounded explanation cache.
 
 ```
 Cricsheet JSON (historical samples)
@@ -141,9 +142,16 @@ open a real LLM network connection.
 Gemini successful responses are cached in-process with TTL and LRU eviction.
 Cache keys isolate match id, sequence, audience, cricket model id, LLM
 provider/model, and question text. Concurrent identical keys coalesce onto one
-provider call. Failures are never cached. Compact prompts omit null fields,
-cap significant moments, and avoid duplicating the last delivery. Cache and
-usage metrics are process-local and are not shared across workers.
+provider call. Failures and degraded fallbacks are never cached as Gemini
+successes. Compact prompts omit null fields, cap significant moments, and
+avoid duplicating the last delivery. Cache and usage metrics are process-local
+and are not shared across workers.
+
+When the Gemini path fails (timeout, rate limit, budget, unavailable,
+malformed output), the explanation service returns a degraded
+`explanation_source=fallback` payload built from reconstructed match facts.
+Companion distinguishes Gemini, deterministic, and degraded responses and
+supports explicit user-controlled retry without automatic provider loops.
 
 ### Authentication
 

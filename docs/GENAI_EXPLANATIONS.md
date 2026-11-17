@@ -1,4 +1,4 @@
-# PulseIQ GenAI explanations — Phase 4
+# PulseIQ GenAI explanations — Phase 5
 
 The explanation service turns structured cricket intelligence into readable
 text. It is a grounded explainer, not a commentary generator and not a second
@@ -30,6 +30,7 @@ Request (audience_level, optional sequence, optional question)
        ├─ HIGH + supported → deterministic engine → ZERO Gemini
        └─ MEDIUM / LOW / ambiguous / omitted question → Gemini path
             (TTL/LRU cache + in-flight coalescing / RPM / daily / concurrency)
+            └─ on provider/parse failure → verified-facts fallback (degraded)
   → schema validation / identity fields
   → API response
 ```
@@ -97,7 +98,25 @@ identity. Deterministic answers set `explanation_source=deterministic`,
 `model_provider=deterministic`, and `model_name=pulseiq-cricket-rules-v1`.
 LLM answers set `explanation_source=gemini`.
 
-Empty text fields and invalid JSON are rejected with `malformed_output`.
+Empty text fields and invalid JSON are rejected with `malformed_output` at the
+parser. On the Gemini explanation path those parse failures degrade to a
+verified-facts fallback instead of returning a hard error to Companion.
+
+## Response source semantics
+
+| `explanation_source` | Meaning |
+| --- | --- |
+| `gemini` | Successful hosted-model explanation |
+| `deterministic` | High-confidence factual answer from reconstructed evidence (no Gemini) |
+| `fallback` | Gemini unavailable; verified scoreboard facts only (`degraded=true`) |
+
+`fallback_reason` is set only for `fallback` responses (examples:
+`provider_timeout`, `provider_rate_limited`, `daily_budget_exhausted`,
+`application_rate_limited`, `malformed_provider_output`). It is never a Gemini
+success label.
+
+Old clients that ignore the new fields still receive the same text payload
+shape. Fallback responses must not be mistaken for Gemini prose.
 
 ## Providers
 
@@ -116,8 +135,7 @@ Optional: `LLM_MODEL`, `OPENAI_BASE_URL`, `GEMINI_BASE_URL`,
 `GEMINI_CACHE_TTL_SECONDS`.
 
 Do not configure both keys unless you need to switch providers. Only the
-selected provider is used. Missing credentials for the selected provider
-return `provider_unavailable` (HTTP 503).
+selected provider is used.
 
 There is no LangChain, no vendor SDK, and no agent loop.
 
@@ -125,6 +143,32 @@ Gemini Phase 1 policy: one outbound `generateContent` attempt per user action
 (`GEMINI_MAX_RETRIES=0`). HTTP 429/503/5xx/404/400/401/403 are not retried and
 do not fall back to another model. OpenAI-compatible providers may still use
 `LLM_MAX_RETRIES`. Invalid credentials are not retried into success.
+
+### Provider failure categories (Phase 5)
+
+| Condition | Typical code | Explanation path |
+| --- | --- | --- |
+| Provider HTTP 429 | `rate_limited` | Degraded fallback |
+| Application RPM / queue | `application_rate_limited` | Degraded fallback |
+| Daily budget | `daily_budget_exhausted` | Degraded fallback |
+| HTTP 503 / connection failure | `provider_unavailable` | Degraded fallback |
+| HTTP 502 / 500 | `provider_error` | Degraded fallback |
+| HTTP 504 / client timeout | `timeout` | Degraded fallback |
+| Malformed JSON / schema | `malformed_output` | Degraded fallback |
+| Incomplete match context | `incomplete_context` | Hard error (no invent) |
+
+Direct provider clients still raise `ProviderError` with these codes. The
+explanation service catches eligible failures and returns HTTP 200 with
+`explanation_source=fallback` so Companion stays useful.
+
+### Graceful verified-facts fallback
+
+Fallback reuses reconstructed `ExplanationContext` fields only: score, wickets,
+overs, teams, target, run rates, last/recent deliveries, and known moments when
+present. It does not invent winners for incomplete matches, does not answer
+tactical questions as deterministic analysis, and never claims to be Gemini
+output. Interpretive questions get an explicit “AI unavailable” note plus
+verified facts.
 
 Gemini traffic in this process is also bounded by a rolling RPM limiter
 (default 4), a UTC daily budget (default 12), and a single-concurrency gate.
@@ -168,7 +212,9 @@ Cached: complete, grounded Gemini `ExplanationResponse` values with non-empty
 `summary`, `what_happened`, `why_it_matters`, and `match_context`.
 
 Not cached: provider failures, timeouts, rate limits, malformed output,
-ungrounded payloads, incomplete text, or deterministic answers.
+ungrounded payloads, incomplete text, deterministic answers, or Phase 5
+degraded `fallback` responses (`degraded=true` / `explanation_source=fallback`).
+A later successful Gemini response for the same key can still be cached.
 
 ### Request coalescing
 
@@ -247,6 +293,14 @@ Prompts are not written in full to logs.
 
 Automated tests use `MockLLMProvider` or `httpx.MockTransport`. They must not
 call a real LLM network. Set `LLM_PROVIDER=mock` in tests.
+
+## Companion reliability (Phase 5)
+
+Companion passes the user question to the explanations API, blocks duplicate
+submits while pending, abandons in-flight work on conversation/match changes,
+ignores late responses after a newer request, and offers explicit Retry for
+retryable errors and degraded fallbacks. Loading clears on success and failure.
+Local conversation history stays in the browser. No automatic Gemini retries.
 
 ## Limitations
 

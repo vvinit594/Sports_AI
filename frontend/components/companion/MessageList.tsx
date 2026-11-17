@@ -5,7 +5,11 @@ import { useEffect, useRef } from "react";
 
 import { Logo } from "@/components/brand/Logo";
 import { Button } from "@/components/ui/Button";
-import { messageIsRetryable, retryActionVisible } from "@/lib/companion-errors";
+import {
+  explanationSourceLabel,
+  messageIsRetryable,
+  retryActionVisible,
+} from "@/lib/companion-errors";
 import type { ChatMessage } from "@/types/companion";
 
 type MessageListProps = {
@@ -93,6 +97,21 @@ function AssistantMessage({
       </div>
       {explanation ? (
         <div className="space-y-3 text-sm">
+          <p className="text-xs uppercase tracking-[0.14em] text-[var(--gold)]">
+            {explanationSourceLabel(
+              explanation.explanation_source,
+              explanation.degraded,
+            )}
+          </p>
+          {explanation.degraded || explanation.explanation_source === "fallback" ? (
+            <p className="text-xs text-muted">
+              AI narration is temporarily unavailable
+              {explanation.fallback_reason
+                ? ` (${explanation.fallback_reason.replaceAll("_", " ")})`
+                : ""}
+              . Showing verified reconstructed match facts only.
+            </p>
+          ) : null}
           <Section title="Summary" body={explanation.summary} />
           <Section title="What happened" body={explanation.what_happened} />
           <Section title="Why it matters" body={explanation.why_it_matters} />
@@ -127,7 +146,9 @@ function AssistantMessage({
             disabled={pending}
             onClick={() => onRetry(message.id)}
           >
-            Retry
+            {message.response?.degraded || message.response?.explanation_source === "fallback"
+              ? "Retry AI explanation"
+              : "Retry"}
           </Button>
         </div>
       ) : message.error && pending && messageIsRetryable(message) ? (

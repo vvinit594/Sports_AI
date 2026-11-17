@@ -204,7 +204,15 @@ def _http_error(response: httpx.Response) -> ProviderError:
             status_code=503,
             detail=snippet,
         )
-    if status in {500, 502, 504}:
+    if status == 504:
+        return ProviderError(
+            "PulseIQ could not finish this explanation in time. "
+            "Your match context is preserved.",
+            code="timeout",
+            status_code=504,
+            detail=snippet,
+        )
+    if status in {500, 502}:
         return ProviderError(
             "The AI provider is temporarily unavailable. "
             "Your match context is preserved. Please try again later.",

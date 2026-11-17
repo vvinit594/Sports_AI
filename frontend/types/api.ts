@@ -155,6 +155,8 @@ export type MomentsResponse = {
   model: ModelMetadataView | null;
 };
 
+export type ExplanationSource = "deterministic" | "gemini" | "fallback";
+
 export type ExplanationResponse = {
   summary: string;
   what_happened: string;
@@ -169,6 +171,9 @@ export type ExplanationResponse = {
   model_name: string;
   data_source: DataSource;
   grounded: boolean;
+  explanation_source?: ExplanationSource;
+  degraded?: boolean;
+  fallback_reason?: string | null;
 };
 
 export type ApiErrorBody = {

@@ -120,12 +120,11 @@ def test_rpm_allows_four_then_rejects_fifth():
         "/api/v1/matches/g-1/explanations",
         json={"audience_level": "casual", "sequence": latest},
     )
-    assert fifth.status_code == 429
+    assert fifth.status_code == 200
     body = fifth.json()
-    assert body["code"] == "application_rate_limited"
-    assert "several AI requests" in body["error"]
-    assert fifth.headers.get("retry-after")
-    assert int(fifth.headers["retry-after"]) >= 1
+    assert body["explanation_source"] == "fallback"
+    assert body["degraded"] is True
+    assert body["fallback_reason"] == "application_rate_limited"
     assert calls["count"] == 4
 
 
@@ -215,8 +214,9 @@ def test_retries_consume_rpm_capacity():
         "/api/v1/matches/g-1/explanations",
         json={"audience_level": "beginner", "sequence": latest},
     )
-    assert first.status_code == 429
-    assert first.json()["code"] == "application_rate_limited"
+    assert first.status_code == 200
+    assert first.json()["explanation_source"] == "fallback"
+    assert first.json()["fallback_reason"] == "application_rate_limited"
     assert calls["count"] == 1
     assert app.state.gemini_guard.snapshot().requests_in_current_minute == 1
 
@@ -247,11 +247,11 @@ def test_daily_budget_rejects_after_exhaustion():
         "/api/v1/matches/g-1/explanations",
         json={"audience_level": "advanced", "sequence": latest},
     )
-    assert blocked.status_code == 429
+    assert blocked.status_code == 200
     body = blocked.json()
-    assert body["code"] == "daily_budget_exhausted"
-    assert "allowance for today" in body["error"]
-    assert blocked.headers.get("retry-after")
+    assert body["explanation_source"] == "fallback"
+    assert body["fallback_reason"] == "daily_budget_exhausted"
+    assert body["degraded"] is True
     assert calls["count"] == 2
 
 
@@ -364,9 +364,10 @@ def test_only_one_gemini_request_active_at_a_time():
     released.set()
     first.join(timeout=2)
     second.join(timeout=2)
-    assert "ok" in results
-    assert "application_rate_limited" in results
+    assert results.count("ok") == 2
     assert active["max"] == 1
+    # Second concurrent request is rejected by the gate and served as a
+    # degraded verified-facts fallback instead of a hard 429 error.
 
 
 def test_concurrency_gate_releases_after_failure_and_does_not_deadlock():
@@ -400,13 +401,15 @@ def test_provider_failure_releases_concurrency_slot():
         "/api/v1/matches/g-1/explanations",
         json={"audience_level": "beginner", "sequence": latest},
     )
-    assert first.status_code == 503
-    assert first.json()["code"] == "provider_unavailable"
+    assert first.status_code == 200
+    assert first.json()["explanation_source"] == "fallback"
+    assert first.json()["fallback_reason"] == "provider_unavailable"
     second = client.post(
         "/api/v1/matches/g-1/explanations",
         json={"audience_level": "casual", "sequence": latest},
     )
     assert second.status_code == 200
+    assert second.json()["explanation_source"] == "gemini"
     assert calls["count"] == 2
 
 
@@ -423,23 +426,24 @@ def test_repeated_failures_do_not_deadlock_the_queue():
             "/api/v1/matches/g-1/explanations",
             json={"audience_level": "beginner", "sequence": latest},
         )
-        assert response.status_code == 502
-        assert response.json()["code"] == "provider_error"
+        assert response.status_code == 200
+        assert response.json()["explanation_source"] == "fallback"
+        assert response.json()["fallback_reason"] == "provider_error"
 
 
 def test_status_codes_make_one_outbound_attempt_only():
     cases = {
-        400: "invalid_request",
+        400: "invalid_provider_request",
         401: "invalid_credentials",
         403: "invalid_credentials",
         404: "unsupported_model",
-        429: "rate_limited",
+        429: "provider_rate_limited",
         500: "provider_error",
         502: "provider_error",
         503: "provider_unavailable",
-        504: "provider_error",
+        504: "provider_timeout",
     }
-    for status, code in cases.items():
+    for status, reason in cases.items():
         calls = {"count": 0}
 
         def handler(
@@ -463,13 +467,11 @@ def test_status_codes_make_one_outbound_attempt_only():
             json={"audience_level": "beginner", "sequence": states[-1].sequence},
         )
         assert calls["count"] == 1, status
-        assert response.json()["code"] == code, status
-        if status == 429:
-            assert response.status_code == 429
-            assert response.headers.get("retry-after") == "7"
-            assert "Gemini has reached its request limit" in response.json()["error"]
-        if status == 503:
-            assert "rate" not in response.json()["error"].lower()
+        body = response.json()
+        assert response.status_code == 200, status
+        assert body["explanation_source"] == "fallback", status
+        assert body["fallback_reason"] == reason, status
+        assert body["degraded"] is True
 
 
 def test_timeout_makes_one_outbound_attempt_only():
@@ -486,9 +488,10 @@ def test_timeout_makes_one_outbound_attempt_only():
         "/api/v1/matches/g-1/explanations",
         json={"audience_level": "beginner", "sequence": states[-1].sequence},
     )
-    assert response.status_code == 504
-    assert response.json()["code"] == "timeout"
-    assert "could not finish this explanation in time" in response.json()["error"]
+    assert response.status_code == 200
+    assert response.json()["explanation_source"] == "fallback"
+    assert response.json()["fallback_reason"] == "provider_timeout"
+    assert "temporarily unavailable" in response.json()["summary"].lower()
     assert calls["count"] == 1
 
 
@@ -577,8 +580,10 @@ def test_failed_responses_are_not_cached():
         "/api/v1/matches/g-1/explanations",
         json={"audience_level": "beginner", "sequence": latest},
     )
-    assert first.status_code == 503
+    assert first.status_code == 200
+    assert first.json()["explanation_source"] == "fallback"
     assert second.status_code == 200
+    assert second.json()["explanation_source"] == "gemini"
     assert calls["count"] == 2
 
 

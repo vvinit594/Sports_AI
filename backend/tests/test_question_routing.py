@@ -261,8 +261,10 @@ def test_budget_exhausted_still_allows_high_confidence_deterministic():
     assert ok.status_code == 200
     assert ok.json()["explanation_source"] == "deterministic"
     blocked = _post(client, "route-budget", "How is the chase going?")
-    assert blocked.status_code == 429
-    assert blocked.json()["code"] == "daily_budget_exhausted"
+    assert blocked.status_code == 200
+    assert blocked.json()["explanation_source"] == "fallback"
+    assert blocked.json()["fallback_reason"] == "daily_budget_exhausted"
+    assert blocked.json()["degraded"] is True
 
 
 def test_context_missing_delivery_stays_deterministic_unavailable():

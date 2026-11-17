@@ -175,7 +175,9 @@ export function createExplanation(
   matchId: string,
   audienceLevel: AudienceLevel,
   sequence?: number,
+  question?: string,
 ) {
+  const trimmedQuestion = question?.replace(/\s+/g, " ").trim();
   return apiFetch<ExplanationResponse>(
     `/matches/${encodeURIComponent(matchId)}/explanations`,
     {
@@ -183,6 +185,7 @@ export function createExplanation(
       body: JSON.stringify({
         audience_level: audienceLevel,
         ...(sequence === undefined ? {} : { sequence }),
+        ...(trimmedQuestion ? { question: trimmedQuestion } : {}),
       }),
     },
   );

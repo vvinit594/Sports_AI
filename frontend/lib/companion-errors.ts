@@ -9,12 +9,16 @@ const PROVIDER_MESSAGES: Record<string, string> = {
     "Gemini rejected this explanation request. The server model configuration needs an update.",
   rate_limited:
     "Gemini is temporarily busy. Please wait a moment before retrying.",
+  application_rate_limited:
+    "PulseIQ is handling several AI requests right now. Verified match facts may still be available. Please try again shortly.",
+  daily_budget_exhausted:
+    "PulseIQ has reached its AI request allowance for today. Cricket match facts remain available.",
   timeout:
     "PulseIQ couldn't finish this explanation in time. Your match context is preserved. Please try again.",
   content_blocked:
     "Gemini blocked this prompt. Try a different delivery sequence from the same historical match.",
   provider_unavailable:
-    "The explanation provider is not configured on the server.",
+    "The AI explanation service is temporarily unavailable. Your match context is preserved.",
   provider_error:
     "The AI service is temporarily unavailable. Your question has been saved.",
   malformed_output:
@@ -28,6 +32,8 @@ const RETRYABLE_CODES = new Set([
   "network_error",
   "timeout",
   "rate_limited",
+  "application_rate_limited",
+  "daily_budget_exhausted",
   "provider_error",
   "provider_unavailable",
   "malformed_output",
@@ -101,13 +107,32 @@ export function suggestedQuestionsDisabled(pending: boolean): boolean {
 }
 
 export function messageIsRetryable(message: ChatMessage): boolean {
-  return (
-    message.role === "assistant" &&
-    Boolean(message.error && message.retryText) &&
-    isRetryableCompanionError(message.error)
-  );
+  if (message.role !== "assistant" || !message.retryText) {
+    return false;
+  }
+  if (message.error) {
+    return isRetryableCompanionError(message.error);
+  }
+  // Degraded verified-facts responses may be retried for a full AI explanation.
+  return Boolean(message.response?.degraded || message.response?.explanation_source === "fallback");
 }
 
 export function retryActionVisible(message: ChatMessage, pending: boolean): boolean {
   return !pending && messageIsRetryable(message);
+}
+
+export function explanationSourceLabel(
+  source: string | undefined,
+  degraded?: boolean,
+): string {
+  if (source === "deterministic") {
+    return "Verified cricket facts";
+  }
+  if (source === "fallback" || degraded) {
+    return "Degraded · verified facts only";
+  }
+  if (source === "gemini") {
+    return "AI explanation";
+  }
+  return "Match explanation";
 }

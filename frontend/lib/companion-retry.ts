@@ -12,7 +12,13 @@ export function snapshotFromFailedMessage(
   message: ChatMessage,
   fallback?: { matchId: string | null; audience: AudienceLevel },
 ): ExplanationRetrySnapshot | null {
-  if (message.role !== "assistant" || !message.error || !message.retryText) {
+  if (message.role !== "assistant" || !message.retryText) {
+    return null;
+  }
+  const degraded =
+    Boolean(message.response?.degraded) ||
+    message.response?.explanation_source === "fallback";
+  if (!message.error && !degraded) {
     return null;
   }
   const matchId = message.retryMatchId || fallback?.matchId || null;
@@ -28,11 +34,13 @@ export function snapshotFromFailedMessage(
 }
 
 export function canRetryMessage(message: ChatMessage, pending: boolean): boolean {
-  return (
-    !pending &&
-    message.role === "assistant" &&
-    Boolean(message.error && message.retryText)
-  );
+  if (pending || message.role !== "assistant" || !message.retryText) {
+    return false;
+  }
+  const degraded =
+    Boolean(message.response?.degraded) ||
+    message.response?.explanation_source === "fallback";
+  return Boolean(message.error || degraded);
 }
 
 export function replaceMessageById(
