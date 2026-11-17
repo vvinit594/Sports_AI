@@ -17,4 +17,6 @@ def create_explanation(
     body: ExplanationRequest,
     service: ExplanationService = Depends(get_explanation_service),
 ) -> ExplanationResponse:
-    return service.explain(match_id, body.audience_level, body.sequence)
+    return service.explain(
+        match_id, body.audience_level, body.sequence, question=body.question
+    )

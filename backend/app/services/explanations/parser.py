@@ -49,7 +49,9 @@ def to_response(
     audience_level: AudienceLevel,
     provider_name: str,
     model_name: str,
+    explanation_source: str = "gemini",
 ) -> ExplanationResponse:
+    source = "deterministic" if explanation_source == "deterministic" else "gemini"
     return ExplanationResponse(
         summary=payload.summary,
         what_happened=payload.what_happened,
@@ -62,6 +64,7 @@ def to_response(
         generated_at=datetime.now(UTC),
         model_provider=provider_name,
         model_name=model_name,
+        explanation_source=source,
     )
 
 

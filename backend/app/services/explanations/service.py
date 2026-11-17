@@ -15,9 +15,15 @@ from app.schemas.explanation import (
 )
 from app.services.api.catalog import MatchCatalog
 from app.services.explanations.cache import explanation_cache_key
+from app.services.explanations.classifier import classify_question
 from app.services.explanations.context import (
     build_explanation_context,
     validate_context,
+)
+from app.services.explanations.deterministic import (
+    DETERMINISTIC_MODEL,
+    DETERMINISTIC_PROVIDER,
+    answer_question,
 )
 from app.services.explanations.guard import GeminiRequestManager
 from app.services.explanations.parser import parse_explanation_json, to_response
@@ -46,15 +52,44 @@ class ExplanationService:
         match_id: str,
         audience_level: AudienceLevel,
         sequence: int | None = None,
+        question: str | None = None,
     ) -> ExplanationResponse:
         loaded = self.catalog.get(match_id)
         state = loaded.state_at(sequence)
         context = build_explanation_context(loaded, state, self.artifact)
         validate_context(context)
         request_id = uuid.uuid4().hex[:12]
+        classification = classify_question(question)
+        if classification.supported:
+            payload = answer_question(
+                category=classification.category,
+                context=context,
+                state=state,
+                audience_level=audience_level,
+            )
+            response = to_response(
+                payload,
+                context=context,
+                audience_level=audience_level,
+                provider_name=DETERMINISTIC_PROVIDER,
+                model_name=DETERMINISTIC_MODEL,
+                explanation_source="deterministic",
+            )
+            log_event(
+                logger,
+                "deterministic_explanation_generated",
+                match_id=match_id,
+                sequence=context.sequence,
+                audience=audience_level.value,
+                category=classification.category.value,
+                request_id=request_id,
+                model=DETERMINISTIC_MODEL,
+            )
+            return response
+
         manager = self.request_manager
         if manager is None or getattr(self.provider, "name", None) != "gemini":
-            return self._generate(audience_level, context, request_id)
+            return self._generate(audience_level, context, request_id, question)
 
         model_id = None
         if self.artifact is not None:
@@ -64,6 +99,7 @@ class ExplanationService:
             sequence=context.sequence,
             audience_level=audience_level,
             model_id=model_id,
+            question=question,
         )
         cached = manager.cache.get(cache_key)
         if cached is not None:
@@ -85,6 +121,7 @@ class ExplanationService:
             audience=audience_level.value,
             request_id=request_id,
             model=self.provider.model_name,
+            classification_reason=classification.reason,
         )
 
         def produce() -> ExplanationResponse:
@@ -101,7 +138,7 @@ class ExplanationService:
                         model=self.provider.model_name,
                     )
                     return replay
-                response = self._generate(audience_level, context, request_id)
+                response = self._generate(audience_level, context, request_id, question)
                 manager.cache.put(cache_key, response)
                 return response
 
@@ -112,8 +149,11 @@ class ExplanationService:
         audience_level: AudienceLevel,
         context: ExplanationContext,
         request_id: str,
+        question: str | None = None,
     ) -> ExplanationResponse:
-        system_prompt, user_prompt = build_prompts(audience_level, context)
+        system_prompt, user_prompt = build_prompts(
+            audience_level, context, question=question
+        )
         started = time.monotonic()
         try:
             raw = self.provider.generate_json(system_prompt, user_prompt)
@@ -142,6 +182,7 @@ class ExplanationService:
             audience_level=audience_level,
             provider_name=self.provider.name,
             model_name=self.provider.model_name,
+            explanation_source="gemini",
         )
         log_event(
             logger,

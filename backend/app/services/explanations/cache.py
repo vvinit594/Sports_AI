@@ -27,6 +27,7 @@ def explanation_cache_key(
     sequence: int,
     audience_level: AudienceLevel | str,
     model_id: str | None,
+    question: str | None = None,
 ) -> str:
     payload = {
         "audience_level": str(audience_level),
@@ -35,6 +36,9 @@ def explanation_cache_key(
         "model_id": model_id or "",
         "sequence": sequence,
     }
+    cleaned = (question or "").strip().lower()
+    if cleaned:
+        payload["question"] = cleaned
     canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 

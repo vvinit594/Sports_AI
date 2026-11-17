@@ -22,14 +22,15 @@ Those rules are in the system prompt and in structured output validation.
 ## Flow
 
 ```
-Request
+Request (audience_level, optional sequence, optional question)
   → historical catalog (Cricsheet sample)
   → MatchStateEngine / existing win-probability / moment detector
   → ExplanationContext (nulls stay null)
-  → audience prompt
-  → LLM provider (JSON only)
-  → schema validation
-  → identity fields overwritten by the service
+  → deterministic classifier (if question is present)
+       ├─ supported fact category → deterministic engine → ZERO Gemini
+       └─ unsupported / omitted question → existing Gemini path
+            (cache / RPM / daily budget / concurrency)
+  → schema validation / identity fields
   → API response
 ```
 
@@ -73,7 +74,9 @@ The model must return JSON with:
 
 The service then sets `audience_level`, `source_match_id`, `source_sequence`,
 `generated_at`, `model_provider`, and `model_name`. The LLM cannot spoof match
-identity.
+identity. Deterministic answers set `explanation_source=deterministic`,
+`model_provider=deterministic`, and `model_name=pulseiq-cricket-rules-v1`.
+LLM answers set `explanation_source=gemini`.
 
 Empty text fields and invalid JSON are rejected with `malformed_output`.
 
@@ -111,9 +114,40 @@ Successful identical explanations are cached in process memory (default TTL
 shared across Render instances or other apps using the same Google project.
 They do not guarantee Google Free Tier compliance.
 
-There is no user authentication, so the explanation cache is shared for the
-same historical match, sequence, audience, and model id. Failures are never
-cached.
+There is no user authentication, so the Gemini explanation cache is shared for
+the same historical match, sequence, audience, model id, and question text.
+Failures are never cached. Deterministic answers do not use that cache and do
+not consume Gemini RPM, daily budget, or the concurrency gate.
+
+## Deterministic cricket questions
+
+An optional `question` field on `POST /api/v1/matches/{match_id}/explanations`
+is backward compatible. Existing clients that send only `audience_level` and
+`sequence` still use the Gemini (or mock) explainer.
+
+When `question` is present, a non-LLM classifier may answer it from
+reconstructed evidence. Supported categories:
+
+| Category | Examples that bypass Gemini |
+| --- | --- |
+| Score and match state | current score, wickets, innings, batting team, target, match complete |
+| Run rate | CRR, RRR, runs remaining, balls remaining |
+| Delivery analysis | last ball, batter, bowler, extras, wicket on that ball |
+| Recent performance | last few reconstructed deliveries |
+| Significant moments | detector-identified moments when predictions exist |
+| Terminal state | winner / final snapshot only if `match_complete` is true |
+
+These still go to Gemini (and therefore the Free-Tier guard):
+
+- omitted or empty questions
+- “why / tactical / strategy / pressure” interpretation
+- cricket definitions (“what is a wicket”)
+- player stats, partnerships, economy, strike rate
+- ambiguous questions that match more than one category
+- any category the classifier does not explicitly recognize
+
+Unavailable facts stay unknown. PulseIQ will not invent a deterministic
+substitute when Gemini quota is exhausted for an unsupported question.
 
 API keys stay server-side. They are not logged and not returned in responses.
 Prompts are not written in full to logs.

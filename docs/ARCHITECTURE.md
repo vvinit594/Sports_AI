@@ -31,7 +31,7 @@ ml.features / ml.dataset_builder
       │
       ▼
 services.api.catalog / intelligence   (read-only wrappers)
-services.explanations                 (grounded LLM explainer)
+services.explanations                 (deterministic Q&A + grounded LLM explainer)
       │
       ▼
 FastAPI  /api/v1
@@ -50,7 +50,7 @@ FastAPI  /api/v1
 | `backend/app/services/ml` | Features, dataset, train, evaluate, inference |
 | `backend/app/services/intelligence` | Win-probability series and moment detection |
 | `backend/app/services/api` | Historical catalog and API wrappers |
-| `backend/app/services/explanations` | Grounded explanation service and LLM providers |
+| `backend/app/services/explanations` | Deterministic cricket Q&A, Gemini guard, LLM providers |
 | `backend/models` | Local Joblib artifacts (gitignored binaries) |
 | `backend/scripts` | Ingest, replay, audit, train, and evaluate CLIs |
 | `backend/tests` | Unit, validation, real-match, Phase 2, and API tests |

@@ -28,6 +28,26 @@ class ExplanationRequest(BaseModel):
         ge=0,
         description="Delivery sequence to explain. Omit for the latest reconstructed state.",
     )
+    question: str | None = Field(
+        default=None,
+        max_length=500,
+        description=(
+            "Optional free-form cricket question. Omit to keep the existing "
+            "Gemini state-explanation path. Treated as untrusted input."
+        ),
+    )
+
+    @field_validator("question", mode="before")
+    @classmethod
+    def _clean_question(cls, value: object) -> object:
+        if value is None:
+            return None
+        if not isinstance(value, str):
+            return value
+        stripped = " ".join(value.split())
+        if not stripped:
+            raise ValueError("question must not be empty")
+        return stripped
 
 
 class DeliverySnippet(FrozenExplanationModel):
@@ -142,3 +162,4 @@ class ExplanationResponse(FrozenExplanationModel):
     model_name: str
     data_source: Literal["historical_cricsheet"] = "historical_cricsheet"
     grounded: bool = True
+    explanation_source: Literal["deterministic", "gemini"] = "gemini"
