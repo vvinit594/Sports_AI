@@ -50,7 +50,7 @@ FastAPI  /api/v1
 | `backend/app/services/ml` | Features, dataset, train, evaluate, inference |
 | `backend/app/services/intelligence` | Win-probability series and moment detection |
 | `backend/app/services/api` | Historical catalog and API wrappers |
-| `backend/app/services/explanations` | Deterministic cricket Q&A, Gemini guard, LLM providers |
+| `backend/app/services/explanations` | Confidence-aware cricket Q&A routing, Gemini guard, LLM providers |
 | `backend/models` | Local Joblib artifacts (gitignored binaries) |
 | `backend/scripts` | Ingest, replay, audit, train, and evaluate CLIs |
 | `backend/tests` | Unit, validation, real-match, Phase 2, and API tests |

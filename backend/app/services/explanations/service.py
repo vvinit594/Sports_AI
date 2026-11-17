@@ -59,8 +59,10 @@ class ExplanationService:
         context = build_explanation_context(loaded, state, self.artifact)
         validate_context(context)
         request_id = uuid.uuid4().hex[:12]
+        # Classification uses a normalized copy. Gemini always receives the
+        # original question text unchanged.
         classification = classify_question(question)
-        if classification.supported:
+        if classification.use_deterministic:
             payload = answer_question(
                 category=classification.category,
                 context=context,
@@ -82,6 +84,7 @@ class ExplanationService:
                 sequence=context.sequence,
                 audience=audience_level.value,
                 category=classification.category.value,
+                certainty=classification.certainty.value,
                 request_id=request_id,
                 model=DETERMINISTIC_MODEL,
             )
@@ -122,6 +125,7 @@ class ExplanationService:
             request_id=request_id,
             model=self.provider.model_name,
             classification_reason=classification.reason,
+            certainty=classification.certainty.value,
         )
 
         def produce() -> ExplanationResponse:

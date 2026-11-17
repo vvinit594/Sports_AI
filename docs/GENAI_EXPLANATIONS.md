@@ -126,28 +126,46 @@ is backward compatible. Existing clients that send only `audience_level` and
 `sequence` still use the Gemini (or mock) explainer.
 
 When `question` is present, a non-LLM classifier may answer it from
-reconstructed evidence. Supported categories:
+reconstructed evidence. Classification confidence is rule-based (not a
+calibrated probability):
+
+| Confidence | Meaning | Route |
+| --- | --- | --- |
+| `high` | Clear, single-category factual request the deterministic engine can answer | Deterministic (zero Gemini) |
+| `medium` | Plausible but weak or vague wording | Gemini + Phase 1 guard |
+| `low` | Unsupported, interpretive, ambiguous, or unrecognized | Gemini + Phase 1 guard |
+
+Only `high` confidence with `supported=true` bypasses Gemini. Normalization is
+used for classification only; the original question text is what Gemini sees.
+
+Supported high-confidence categories:
 
 | Category | Examples that bypass Gemini |
 | --- | --- |
 | Score and match state | current score, wickets, innings, batting team, target, match complete |
-| Run rate | CRR, RRR, runs remaining, balls remaining |
-| Delivery analysis | last ball, batter, bowler, extras, wicket on that ball |
-| Recent performance | last few reconstructed deliveries |
-| Significant moments | detector-identified moments when predictions exist |
-| Terminal state | winner / final snapshot only if `match_complete` is true |
+| Run rate | CRR, RRR, asking rate, runs remaining, balls/deliveries left |
+| Delivery analysis | last/previous ball, on strike, bowler, extras, dismissal on that ball |
+| Recent performance | last over / last few reconstructed deliveries |
+| Significant moments | detector-identified turning points when predictions exist |
+| Terminal state | winner / final result only if `match_complete` is true |
 
 These still go to Gemini (and therefore the Free-Tier guard):
 
 - omitted or empty questions
-- “why / tactical / strategy / pressure” interpretation
+- medium-confidence vague phrasing (“how is the chase going”)
+- “why / tactical / strategy / pressure / predict” interpretation
 - cricket definitions (“what is a wicket”)
 - player stats, partnerships, economy, strike rate
-- ambiguous questions that match more than one category
+- mixed-intent or multi-category questions (no silent first-match)
 - any category the classifier does not explicitly recognize
 
+When a high-confidence category is clear but evidence is missing (no last
+delivery, empty recent window, moments without a model, incomplete match),
+the deterministic engine returns an explicit unavailable answer. It does not
+invent facts and does not spend Gemini quota.
+
 Unavailable facts stay unknown. PulseIQ will not invent a deterministic
-substitute when Gemini quota is exhausted for an unsupported question.
+substitute when Gemini quota is exhausted for a medium/low question.
 
 API keys stay server-side. They are not logged and not returned in responses.
 Prompts are not written in full to logs.

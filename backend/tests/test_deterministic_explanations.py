@@ -12,7 +12,11 @@ from app.core.config import Settings
 from app.main import create_app
 from app.schemas.explanation import AudienceLevel, ExplanationRequest
 from app.services.api.catalog import MatchCatalog
-from app.services.explanations.classifier import QuestionCategory, classify_question
+from app.services.explanations.classifier import (
+    ConfidenceLevel,
+    QuestionCategory,
+    classify_question,
+)
 from app.services.explanations.deterministic import (
     DETERMINISTIC_MODEL,
     DETERMINISTIC_PROVIDER,
@@ -56,7 +60,8 @@ def test_classifier_supported_categories_and_synonyms():
         result = classify_question(question)
         assert result.supported is True, question
         assert result.category is category, question
-        assert result.certainty == "high"
+        assert result.certainty is ConfidenceLevel.HIGH
+        assert result.use_deterministic is True
 
 
 def test_classifier_rejects_ambiguous_interpretive_and_stats():
@@ -74,6 +79,8 @@ def test_classifier_rejects_ambiguous_interpretive_and_stats():
         result = classify_question(question)
         assert result.supported is False, question
         assert result.reason == reason, (question, result.reason)
+        assert result.use_deterministic is False
+        assert result.certainty in {ConfidenceLevel.LOW, ConfidenceLevel.MEDIUM}
 
 
 def test_classifier_empty_and_missing_question():

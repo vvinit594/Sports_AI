@@ -171,10 +171,11 @@ Omit `sequence` to explain the latest reconstructed state.
 `question` is optional (max 500 characters). Omitting it preserves the existing
 Gemini/mock state-explanation path.
 
-When `question` matches a supported factual category, the API answers from
-reconstructed match evidence with `explanation_source: "deterministic"` and
-does not call Gemini. Interpretive or unknown questions still use the LLM path
-and the Phase 1 usage guard. See `docs/GENAI_EXPLANATIONS.md`.
+When `question` is classified as a high-confidence supported factual category,
+the API answers from reconstructed match evidence with
+`explanation_source: "deterministic"` and does not call Gemini. Medium/low
+confidence, ambiguous, interpretive, or unknown questions still use the LLM
+path and the Phase 1 usage guard. See `docs/GENAI_EXPLANATIONS.md`.
 
 The LLM does not calculate scores, wickets, run rates, or probabilities. Those
 values come from the match engine and ML services.
