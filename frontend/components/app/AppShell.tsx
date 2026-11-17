@@ -1,6 +1,6 @@
 "use client";
 
-import type { ReactNode } from "react";
+import { useEffect, type ReactNode } from "react";
 import { usePathname } from "next/navigation";
 
 import { AppFooter } from "@/components/app/AppFooter";
@@ -11,11 +11,26 @@ export function AppShell({ children }: { children: ReactNode }) {
   const companion = pathname.startsWith("/companion");
   const live = pathname.startsWith("/live");
 
+  useEffect(() => {
+    if (!companion) {
+      return;
+    }
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [companion]);
+
   if (companion) {
+    // Fixed to the visual viewport so 100svh/100vh cannot extend the document
+    // and create a page-level scrollbar with empty ink below the chat chrome.
     return (
-      <div className="flex h-[100svh] flex-col overflow-hidden bg-[var(--ink)]">
+      <div className="fixed inset-0 flex flex-col overflow-hidden bg-[var(--ink)]">
         <AppNav />
-        <div className="min-h-0 flex-1">{children}</div>
+        <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+          {children}
+        </div>
       </div>
     );
   }

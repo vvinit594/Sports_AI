@@ -34,7 +34,7 @@ function CompanionLayout() {
   const hasMatch = Boolean(active?.selectedMatchId);
 
   return (
-    <div className="flex h-full min-h-0 bg-[var(--ink)]">
+    <div className="flex h-full min-h-0 flex-1 overflow-hidden bg-[var(--ink)]">
       <motion.aside
         initial={false}
         animate={{
@@ -42,12 +42,12 @@ function CompanionLayout() {
           opacity: sidebarCollapsed ? 0 : 1,
         }}
         transition={reduceMotion ? { duration: 0 } : { duration: 0.22, ease: "easeOut" }}
-        className={`hidden h-full shrink-0 overflow-hidden border-white/10 lg:block ${
+        className={`hidden h-full min-h-0 shrink-0 overflow-hidden border-white/10 lg:block ${
           sidebarCollapsed ? "pointer-events-none border-0" : "border-r"
         }`}
         aria-hidden={sidebarCollapsed}
       >
-        <div className="h-full w-72">
+        <div className="h-full min-h-0 w-72">
           <ChatSidebar />
         </div>
       </motion.aside>
@@ -64,7 +64,7 @@ function CompanionLayout() {
         ) : null}
       </AnimatePresence>
 
-      <section className="flex min-w-0 flex-1 flex-col">
+      <section className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
         <ChatHeader
           desktopSidebarExpanded={!sidebarCollapsed}
           onOpenMobileSidebar={() => setSidebarOpen(true)}
@@ -98,7 +98,7 @@ function CompanionLayout() {
         <MessageComposer pending={pending} disabled={!hydrated} onSend={(text) => void send(text)} />
       </section>
 
-      <aside className="hidden h-full w-80 shrink-0 border-l border-white/10 xl:block">
+      <aside className="hidden h-full min-h-0 w-80 shrink-0 overflow-hidden border-l border-white/10 xl:block">
         <MatchContextPanel onChangeMatch={() => setSelectorOpen(true)} />
       </aside>
       <AnimatePresence>
