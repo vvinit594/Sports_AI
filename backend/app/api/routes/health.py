@@ -42,6 +42,11 @@ def ready(request: Request) -> ReadinessResponse | JSONResponse:
             cache_entries=snap.cache_entries,
             cache_ttl_seconds=snap.cache_ttl_seconds,
             resets_on_process_restart=snap.resets_on_process_restart,
+            cache_hits=snap.cache_hits,
+            cache_misses=snap.cache_misses,
+            cache_coalesce_hits=snap.cache_coalesce_hits,
+            cache_expirations=snap.cache_expirations,
+            cache_lru_evictions=snap.cache_lru_evictions,
         )
     body = ReadinessResponse(
         status="ready" if is_ready else "not_ready",

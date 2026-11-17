@@ -1,13 +1,15 @@
-# PulseIQ Architecture — Phase 1, Phase 2, and Phase 3
+# PulseIQ Architecture — Phase 1 through Phase 4
 
 ## Scope
 
 Phase 1 reconstructs cricket match state. Phase 2 adds chase-win features,
 baseline models, inference, and deterministic moment detection. Phase 3 adds a
 modular FastAPI application and a provider-independent GenAI explanation
-service. There is still no database, Redis, live cricket provider,
-authentication, or agent framework. Gemini Free-Tier protection uses
-process-local in-memory counters and a bounded explanation cache.
+service. Phase 4 tightens Gemini explanation caching (TTL/LRU, coalescing,
+key isolation) and compact prompt context without Redis or a database. There
+is still no live cricket provider, authentication, or agent framework. Gemini
+Free-Tier protection uses process-local in-memory counters and a bounded
+explanation cache.
 
 ```
 Cricsheet JSON (historical samples)
@@ -136,6 +138,13 @@ selected by `LLM_PROVIDER` (`mock`, `gemini`, or `openai`). HTTP calls use
 httpx with bounded timeouts and retries. Tests use the mock provider and never
 open a real LLM network connection.
 
+Gemini successful responses are cached in-process with TTL and LRU eviction.
+Cache keys isolate match id, sequence, audience, cricket model id, LLM
+provider/model, and question text. Concurrent identical keys coalesce onto one
+provider call. Failures are never cached. Compact prompts omit null fields,
+cap significant moments, and avoid duplicating the last delivery. Cache and
+usage metrics are process-local and are not shared across workers.
+
 ### Authentication
 
 Not implemented. The PRD does not require user accounts in this phase.
@@ -170,5 +179,7 @@ local-development requirement for match processing.
 1. Catalog returns a cached `NormalizedMatch` and reconstructed `MatchState` list.
 2. Win-probability calls `win_probabilities_for_match` with those states.
 3. Moments call `detect_significant_moments` on that prediction series.
-4. Explanations build `ExplanationContext` from the same objects, then call one
-   configured LLM provider for structured JSON.
+4. Explanations build `ExplanationContext` from the same objects. High-confidence
+   factual questions may answer deterministically; otherwise one configured LLM
+   provider returns structured JSON (subject to Gemini cache and Free-Tier
+   guards).

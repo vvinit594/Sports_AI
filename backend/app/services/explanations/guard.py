@@ -13,6 +13,7 @@ from __future__ import annotations
 import logging
 import time
 from collections.abc import Callable
+from dataclasses import replace
 from datetime import UTC, datetime
 from threading import BoundedSemaphore, Lock
 from typing import TypeVar
@@ -186,13 +187,22 @@ class GeminiRequestManager:
             client.attempt_hook = self.reserve_outbound  # type: ignore[attr-defined]
 
     def snapshot(self) -> UsageSnapshot:
-        return self.store.snapshot(
+        cache_stats = self.cache.stats()
+        base = self.store.snapshot(
             self._monotonic(),
             self._utc_now(),
             rpm_limit=self.rpm_limit,
             window_seconds=self.window_seconds,
             daily_budget=self.daily_budget,
             max_concurrent_requests=self.gate.max_concurrent,
-            cache_entries=self.cache.size(),
+            cache_entries=cache_stats.entries,
             cache_ttl_seconds=int(self.cache.ttl_seconds),
+        )
+        return replace(
+            base,
+            cache_hits=cache_stats.hits,
+            cache_misses=cache_stats.misses,
+            cache_coalesce_hits=cache_stats.coalesce_hits,
+            cache_expirations=cache_stats.expirations,
+            cache_lru_evictions=cache_stats.lru_evictions,
         )

@@ -49,14 +49,14 @@ def test_beginner_casual_and_advanced_prompt_generation():
     context = empty_context()
     for level in AudienceLevel:
         system_prompt, user_prompt = build_prompts(level, context)
-        assert "Use only the supplied match context JSON" in system_prompt
+        assert "Use only the supplied match-context JSON" in system_prompt
         assert "Do not invent scores" in system_prompt
         assert "untrusted data" in system_prompt.lower()
         assert AUDIENCE_RULES[level].splitlines()[0] in system_prompt
         assert f"audience_level={level.value}" in user_prompt
         assert "UNTRUSTED_MATCH_CONTEXT_JSON" in user_prompt
         assert context.source_match_id in user_prompt
-        assert '"score": 10' in user_prompt
+        assert '"score":10' in user_prompt
         assert SHARED_RULES[:40] in system_prompt
         for other in AudienceLevel:
             if other is level:
@@ -70,9 +70,11 @@ def test_prompt_injects_match_context_and_unknown_fields():
     payload_text = user_prompt.split("UNTRUSTED_MATCH_CONTEXT_JSON", 1)[1]
     payload = json.loads(payload_text.split("END_UNTRUSTED_MATCH_CONTEXT_JSON")[0])
     assert payload["source_match_id"] == "ctx-1"
-    assert payload["target"] is None
+    # Compact prompts omit null optionals; unknown_fields remains the signal.
+    assert "target" not in payload
+    assert "win_probability" not in payload
     assert "target" in payload["unknown_fields"]
-    assert payload["win_probability"] is None
+    assert "win_probability" in payload["unknown_fields"]
 
 
 def test_context_builder_does_not_invent_win_probability():

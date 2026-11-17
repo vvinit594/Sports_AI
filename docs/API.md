@@ -55,8 +55,11 @@ not fail readiness; win-probability and moment endpoints then return an
 unavailable payload instead of invented numbers.
 
 When `LLM_PROVIDER=gemini`, readiness may also include `llm_usage` with
-process-local RPM, daily budget, concurrency, and cache counts. Those values
-reset on process restart and never include API keys.
+process-local RPM, daily budget, concurrency, cache entry/TTL counts, and
+lightweight cache counters (`cache_hits`, `cache_misses`,
+`cache_coalesce_hits`, `cache_expirations`, `cache_lru_evictions`). Those
+values reset on process restart, are not shared across workers, and never
+include API keys or prompts.
 
 ### `GET /api/v1/matches`
 

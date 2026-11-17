@@ -28,6 +28,11 @@ class UsageSnapshot:
     cache_entries: int
     cache_ttl_seconds: int
     resets_on_process_restart: bool = True
+    cache_hits: int = 0
+    cache_misses: int = 0
+    cache_coalesce_hits: int = 0
+    cache_expirations: int = 0
+    cache_lru_evictions: int = 0
 
 
 class GeminiUsageStore(Protocol):

@@ -27,7 +27,7 @@ from app.services.explanations.deterministic import (
 )
 from app.services.explanations.guard import GeminiRequestManager
 from app.services.explanations.parser import parse_explanation_json, to_response
-from app.services.explanations.prompts import build_prompts
+from app.services.explanations.prompts import build_prompts, prompt_payload_size_chars
 from app.services.explanations.providers.base import LLMProvider
 from app.services.ml.model_registry import ModelArtifact
 
@@ -56,8 +56,10 @@ class ExplanationService:
     ) -> ExplanationResponse:
         loaded = self.catalog.get(match_id)
         state = loaded.state_at(sequence)
+        context_started = time.monotonic()
         context = build_explanation_context(loaded, state, self.artifact)
         validate_context(context)
+        context_ms = int((time.monotonic() - context_started) * 1000)
         request_id = uuid.uuid4().hex[:12]
         # Classification uses a normalized copy. Gemini always receives the
         # original question text unchanged.
@@ -87,12 +89,19 @@ class ExplanationService:
                 certainty=classification.certainty.value,
                 request_id=request_id,
                 model=DETERMINISTIC_MODEL,
+                context_ms=context_ms,
             )
             return response
 
         manager = self.request_manager
         if manager is None or getattr(self.provider, "name", None) != "gemini":
-            return self._generate(audience_level, context, request_id, question)
+            return self._generate(
+                audience_level,
+                context,
+                request_id,
+                question,
+                context_ms=context_ms,
+            )
 
         model_id = None
         if self.artifact is not None:
@@ -103,6 +112,8 @@ class ExplanationService:
             audience_level=audience_level,
             model_id=model_id,
             question=question,
+            provider_name=self.provider.name,
+            llm_model=self.provider.model_name,
         )
         cached = manager.cache.get(cache_key)
         if cached is not None:
@@ -114,6 +125,7 @@ class ExplanationService:
                 audience=audience_level.value,
                 request_id=request_id,
                 model=self.provider.model_name,
+                context_ms=context_ms,
             )
             return cached
         log_event(
@@ -126,6 +138,7 @@ class ExplanationService:
             model=self.provider.model_name,
             classification_reason=classification.reason,
             certainty=classification.certainty.value,
+            context_ms=context_ms,
         )
 
         def produce() -> ExplanationResponse:
@@ -140,10 +153,25 @@ class ExplanationService:
                         audience=audience_level.value,
                         request_id=request_id,
                         model=self.provider.model_name,
+                        context_ms=context_ms,
                     )
                     return replay
-                response = self._generate(audience_level, context, request_id, question)
-                manager.cache.put(cache_key, response)
+                response = self._generate(
+                    audience_level,
+                    context,
+                    request_id,
+                    question,
+                    context_ms=context_ms,
+                )
+                stored = manager.cache.put(cache_key, response)
+                log_event(
+                    logger,
+                    "gemini_cache_store",
+                    match_id=match_id,
+                    sequence=context.sequence,
+                    request_id=request_id,
+                    stored=stored,
+                )
                 return response
 
         return manager.cache.coalesce(cache_key, produce)
@@ -154,11 +182,27 @@ class ExplanationService:
         context: ExplanationContext,
         request_id: str,
         question: str | None = None,
+        *,
+        context_ms: int | None = None,
     ) -> ExplanationResponse:
+        compact_chars = prompt_payload_size_chars(context, compact=True)
+        full_chars = prompt_payload_size_chars(context, compact=False)
         system_prompt, user_prompt = build_prompts(
             audience_level, context, question=question
         )
         started = time.monotonic()
+        log_event(
+            logger,
+            "gemini_prompt_prepared",
+            match_id=context.source_match_id,
+            sequence=context.sequence,
+            request_id=request_id,
+            model=self.provider.model_name,
+            context_chars_compact=compact_chars,
+            context_chars_full=full_chars,
+            prompt_chars=len(system_prompt) + len(user_prompt),
+            context_ms=context_ms,
+        )
         try:
             raw = self.provider.generate_json(system_prompt, user_prompt)
         except ProviderError:
@@ -198,6 +242,7 @@ class ExplanationService:
             model=self.provider.model_name,
             duration_ms=int((time.monotonic() - started) * 1000),
             request_id=request_id,
+            prompt_chars=len(system_prompt) + len(user_prompt),
         )
         return response
 
